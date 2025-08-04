@@ -1,0 +1,60 @@
+CREATE TABLE public.schema_metadata (
+  table_name TEXT PRIMARY KEY,
+  schema_json JSONB NOT NULL
+);
+
+INSERT INTO public.schema_metadata (table_name, schema_json)
+VALUES (
+  'flight_schedule',
+  '{
+    "flight_schedule_id": "BIGINT NOT NULL",
+    "aodb_flight_id": "BIGINT",
+    "airline_code": "VARCHAR",
+    "flight_number": "VARCHAR",
+    "flight_schedule_type": "VARCHAR",
+    "flight_type": "VARCHAR",
+    "operational_suffix": "VARCHAR",
+    "operational_status": "VARCHAR",
+    "code_context": "VARCHAR",
+    "departure_airport": "VARCHAR",
+    "arrival_airport": "VARCHAR",
+    "schedule_type": "VARCHAR",
+    "terminal_name": "VARCHAR",
+    "public_terminal_name": "VARCHAR",
+    "origin_date_time": "TIMESTAMP WITHOUT TIME ZONE",
+    "scheduled_arrival_time": "TIMESTAMP WITHOUT TIME ZONE",
+    "estimated_arrival_time": "TIMESTAMP WITHOUT TIME ZONE",
+    "actual_arrival_time": "TIMESTAMP WITHOUT TIME ZONE",
+    "scheduled_departure_time": "TIMESTAMP WITHOUT TIME ZONE",
+    "estimated_departure_time": "TIMESTAMP WITHOUT TIME ZONE",
+    "actual_departure_time": "TIMESTAMP WITHOUT TIME ZONE",
+    "final_boarding_time": "TIMESTAMP WITHOUT TIME ZONE",
+    "boarding_time": "TIMESTAMP WITHOUT TIME ZONE",
+    "actual_touchdown_time": "TIMESTAMP WITHOUT TIME ZONE",
+    "actual_take_off_time": "TIMESTAMP WITHOUT TIME ZONE",
+    "first_bag_unloaded_time": "TIMESTAMP WITHOUT TIME ZONE",
+    "last_bag_unloaded_time": "TIMESTAMP WITHOUT TIME ZONE",
+    "gate_open_time": "TIMESTAMP WITHOUT TIME ZONE",
+    "gate_close_time": "TIMESTAMP WITHOUT TIME ZONE",
+    "ten_miles_out_time": "TIMESTAMP WITHOUT TIME ZONE",
+    "stand_bay": "VARCHAR",
+    "service_type": "VARCHAR",
+    "special_action": "VARCHAR",
+    "delay_code": "VARCHAR",
+    "delay_duration": "INTERVAL",
+    "remark_text_code": "VARCHAR",
+    "remark_free_text": "TEXT",
+    "created_by": "VARCHAR",
+    "created_dt": "TIMESTAMP WITHOUT TIME ZONE",
+    "updated_by": "VARCHAR",
+    "updated_dt": "TIMESTAMP WITHOUT TIME ZONE",
+    "airline_name": "VARCHAR",
+    "departure_airport_name": "VARCHAR",
+    "arrival_airport_name": "VARCHAR",
+    "deleted_dt": "TIMESTAMP WITHOUT TIME ZONE",
+    "operational_status_description": "VARCHAR",
+    "gate_name": "VARCHAR",
+    "service_type_desc": "VARCHAR"
+  }'::jsonb
+)
+ON CONFLICT (table_name) DO UPDATE SET schema_json = EXCLUDED.schema_json;

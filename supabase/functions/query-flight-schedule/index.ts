@@ -6,60 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Define the schema for the flight_schedule table to guide the LLM
-const FLIGHT_SCHEDULE_SCHEMA = `
-CREATE TABLE public.flight_schedule (
-  flight_schedule_id BIGINT NOT NULL,
-  aodb_flight_id BIGINT,
-  airline_code VARCHAR,
-  flight_number VARCHAR,
-  flight_schedule_type VARCHAR,
-  flight_type VARCHAR,
-  operational_suffix VARCHAR,
-  operational_status VARCHAR,
-  code_context VARCHAR,
-  departure_airport VARCHAR,
-  arrival_airport VARCHAR,
-  schedule_type VARCHAR,
-  terminal_name VARCHAR,
-  public_terminal_name VARCHAR,
-  origin_date_time TIMESTAMP WITHOUT TIME ZONE,
-  scheduled_arrival_time TIMESTAMP WITHOUT TIME ZONE,
-  estimated_arrival_time TIMESTAMP WITHOUT TIME ZONE,
-  actual_arrival_time TIMESTAMP WITHOUT TIME ZONE,
-  scheduled_departure_time TIMESTAMP WITHOUT TIME ZONE,
-  estimated_departure_time TIMESTAMP WITHOUT TIME ZONE,
-  actual_departure_time TIMESTAMP WITHOUT TIME ZONE,
-  final_boarding_time TIMESTAMP WITHOUT TIME ZONE,
-  boarding_time TIMESTAMP WITHOUT TIME ZONE,
-  actual_touchdown_time TIMESTAMP WITHOUT TIME ZONE,
-  actual_take_off_time TIMESTAMP WITHOUT TIME ZONE,
-  first_bag_unloaded_time TIMESTAMP WITHOUT TIME ZONE,
-  last_bag_unloaded_time TIMESTAMP WITHOUT TIME ZONE,
-  gate_open_time TIMESTAMP WITHOUT TIME ZONE,
-  gate_close_time TIMESTAMP WITHOUT TIME ZONE,
-  ten_miles_out_time TIMESTAMP WITHOUT TIME ZONE,
-  stand_bay VARCHAR,
-  service_type VARCHAR,
-  special_action VARCHAR,
-  delay_code VARCHAR,
-  delay_duration INTERVAL,
-  remark_text_code VARCHAR,
-  remark_free_text TEXT,
-  created_by VARCHAR,
-  created_dt TIMESTAMP WITHOUT TIME ZONE,
-  updated_by VARCHAR,
-  updated_dt TIMESTAMP WITHOUT TIME ZONE,
-  airline_name VARCHAR,
-  departure_airport_name VARCHAR,
-  arrival_airport_name VARCHAR,
-  deleted_dt TIMESTAMP WITHOUT TIME ZONE,
-  operational_status_description VARCHAR,
-  gate_name VARCHAR,
-  service_type_desc VARCHAR
-);
-`;
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -86,12 +32,26 @@ serve(async (req) => {
       }
     );
 
+    // Fetch schema dynamically from Supabase
+    const { data: schemaData, error: schemaError } = await supabase
+      .from('schema_metadata')
+      .select('schema_json')
+      .eq('table_name', 'flight_schedule')
+      .single();
+
+    if (schemaError || !schemaData) {
+      console.error('Error fetching schema metadata:', schemaError);
+      throw new Error('Failed to retrieve table schema from database.');
+    }
+
+    const flightScheduleSchema = schemaData.schema_json;
+
     let sqlQuery = '';
     let naturalLanguageResponse = '';
 
-    const prompt = `You are a PostgreSQL query generator. Given the following table schema for 'flight_schedule':
-\`\`\`sql
-${FLIGHT_SCHEDULE_SCHEMA}
+    const prompt = `You are a PostgreSQL query generator. Given the following table schema for 'flight_schedule' in JSON format:
+\`\`\`json
+${JSON.stringify(flightScheduleSchema, null, 2)}
 \`\`\`
 Generate a PostgreSQL query based on the user's request. Only output the SQL query, nothing else. Do not include any explanations or additional text.
 If the request cannot be fulfilled with the given schema, return an empty string.
@@ -100,7 +60,8 @@ User request: "${user_query}"`;
 
     console.log("Prompt sent to Gemini:", prompt);
 
-    const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${geminiApiKey}`, {
+    // Changed model to gemini-2.5-flash
+    const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
