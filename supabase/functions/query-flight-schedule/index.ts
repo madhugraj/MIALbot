@@ -97,6 +97,12 @@ ${JSON.stringify(schemaData.schema_json)}
     } else {
       sqlQuery = generatedText.trim();
     }
+    
+    // Remove trailing semicolon if it exists
+    if (sqlQuery.endsWith(';')) {
+      sqlQuery = sqlQuery.slice(0, -1);
+    }
+
     console.log("Parsed SQL Query:", sqlQuery);
 
     let naturalLanguageResponse;
