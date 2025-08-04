@@ -38,28 +38,33 @@ const Chatbot: React.FC = () => {
       text: input,
       sender: "user",
     };
-    setMessages((prevMessages) => [...prevMessages, newUserMessage]);
+    
+    const updatedMessages = [...messages, newUserMessage];
+    setMessages(updatedMessages);
     setInput("");
     setIsBotTyping(true);
 
     try {
-      // Invoke the new Edge Function agent
+      // Pass the latest user query and the conversation history to the agent.
       const { data, error } = await supabase.functions.invoke('chatbot-agent', {
-        body: { user_query: newUserMessage.text },
+        body: { 
+          user_query: newUserMessage.text,
+          history: messages // Pass previous messages as context
+        },
       });
 
       if (error) {
         console.error("Error invoking Edge Function:", error);
         const botErrorResponse: Message = {
-          id: messages.length + 2,
+          id: updatedMessages.length + 1,
           text: "Sorry, I couldn't process your request due to an error.",
           sender: "bot",
         };
         setMessages((prevMessages) => [...prevMessages, botErrorResponse]);
       } else {
         const botResponse: Message = {
-          id: messages.length + 2,
-          text: data.response, // The natural language response from the Edge Function
+          id: updatedMessages.length + 1,
+          text: data.response,
           sender: "bot",
         };
         setMessages((prevMessages) => [...prevMessages, botResponse]);
@@ -67,7 +72,7 @@ const Chatbot: React.FC = () => {
     } catch (fetchError) {
       console.error("Network or unexpected error:", fetchError);
       const botNetworkErrorResponse: Message = {
-        id: messages.length + 2,
+        id: updatedMessages.length + 1,
         text: "It seems there's a problem connecting. Please try again later.",
         sender: "bot",
       };

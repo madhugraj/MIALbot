@@ -28,8 +28,14 @@ async function callGemini(apiKey, prompt) {
   throw new Error("Gemini response did not contain expected content structure.");
 }
 
+// Helper to format history
+function formatHistory(history) {
+    if (!history || history.length === 0) return "No conversation history yet.";
+    return history.map(msg => `${msg.sender === 'user' ? 'User' : 'Assistant'}: ${msg.text}`).join('\n');
+}
+
 // Tool 1: Flight Query Logic
-async function handleFlightQuery(supabase, geminiApiKey, user_query) {
+async function handleFlightQuery(supabase, geminiApiKey, user_query, formattedHistory) {
   const { data: schemaData, error: schemaError } = await supabase
     .from('schema_metadata')
     .select('schema_json')
@@ -42,10 +48,16 @@ async function handleFlightQuery(supabase, geminiApiKey, user_query) {
   }
 
   const sqlGenerationPrompt = `You are an AI agent responsible for answering user questions using data from the \`public.flight_schedule\` table in PostgreSQL.
-You must convert each user message into a safe, read-only SQL SELECT query.
+You must convert the user's latest message into a safe, read-only SQL SELECT query, using the conversation history for context.
+
 The schema for the 'public.flight_schedule' table is:
 ${JSON.stringify(schemaData.schema_json)}
+
+**Conversation History:**
+${formattedHistory}
+
 **Rules & Guidelines:**
+✔️ Use the conversation history to understand follow-up questions.
 ✔️ Only use the table \`public.flight_schedule\`.
 ✔️ Never modify, insert, delete, or update data.
 ✔️ Prefer selecting these columns: flight_number, airline_name, departure_airport_name, arrival_airport_name, scheduled_departure_time, estimated_departure_time, actual_departure_time, terminal_name, gate_name, operational_status_description.
@@ -53,7 +65,8 @@ ${JSON.stringify(schemaData.schema_json)}
 ✔️ If the user's question implies a date or time, always order the results by scheduled_departure_time in descending order (DESC).
 ✔️ If a query is impossible or ambiguous, you MUST return the single word: INVALID_QUERY.
 **Only return SQL — no explanation or commentary.**
-**User Question:** "${user_query}"
+
+**Latest User Question:** "${user_query}"
 **SQL Query:**`;
 
   const generatedText = await callGemini(geminiApiKey, sqlGenerationPrompt);
@@ -76,7 +89,9 @@ The following data was retrieved from the database in JSON format:
 \`\`\`json
 ${JSON.stringify(data, null, 2)}
 \`\`\`
-Based on this data, provide a concise, natural language answer. Do not just list the data. Summarize it in a friendly and helpful way. If the data contains a count, state it clearly.`;
+Based on this data and the conversation history, provide a concise, natural language answer. Do not just list the data. Summarize it in a friendly and helpful way.
+**Conversation History:**
+${formattedHistory}`;
     return await callGemini(geminiApiKey, summarizationPrompt);
   }
 
@@ -84,10 +99,16 @@ Based on this data, provide a concise, natural language answer. Do not just list
 }
 
 // Tool 2: General Conversation Logic
-async function handleGeneralConversation(geminiApiKey, user_query) {
+async function handleGeneralConversation(geminiApiKey, user_query, formattedHistory) {
   const prompt = `You are MIAlAssist, a friendly and helpful AI assistant for Miami International Airport.
-The user said: "${user_query}"
-Provide a brief, helpful, and conversational response. Keep it concise. If you don't know the answer, say so politely.`;
+Respond to the user's latest message in a brief, helpful, and conversational way, using the history for context.
+
+**Conversation History:**
+${formattedHistory}
+
+**User's Latest Message:** "${user_query}"
+
+**Your Response:**`;
   return await callGemini(geminiApiKey, prompt);
 }
 
@@ -98,7 +119,7 @@ serve(async (req) => {
   }
 
   try {
-    const { user_query } = await req.json();
+    const { user_query, history } = await req.json();
     const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
     if (!geminiApiKey) throw new Error('GEMINI_API_KEY is not set.');
 
@@ -106,15 +127,20 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
+    
+    const formattedHistory = formatHistory(history);
 
     // 1. Intent Classification
-    const intentClassificationPrompt = `You are a router agent. Your job is to classify the user's intent.
-Based on the user's message, determine if they are asking a question about flight schedules or if they are making general conversation.
+    const intentClassificationPrompt = `You are a router agent. Your job is to classify the user's latest intent based on the conversation history.
 Respond with one of the following tool names:
 - 'FLIGHT_QUERY': If the user is asking about flights, delays, terminals, gates, airlines, etc.
 - 'GENERAL_CONVERSATION': If the user is making small talk, greeting, or asking a question not related to flights.
-User Message: "${user_query}"
-Tool:`;
+
+**Conversation History:**
+${formattedHistory}
+
+**User's Latest Message:** "${user_query}"
+**Tool:**`;
 
     const intent = (await callGemini(geminiApiKey, intentClassificationPrompt)).trim().replace(/'/g, "");
     console.log("Classified Intent:", intent);
@@ -123,13 +149,13 @@ Tool:`;
 
     // 2. Tool Routing
     if (intent === 'FLIGHT_QUERY') {
-      response = await handleFlightQuery(supabase, geminiApiKey, user_query);
+      response = await handleFlightQuery(supabase, geminiApiKey, user_query, formattedHistory);
     } else if (intent === 'GENERAL_CONVERSATION') {
-      response = await handleGeneralConversation(geminiApiKey, user_query);
+      response = await handleGeneralConversation(geminiApiKey, user_query, formattedHistory);
     } else {
       // Fallback if classification fails or is unexpected
       console.log("Fallback: Could not classify intent. Trying general conversation.");
-      response = await handleGeneralConversation(geminiApiKey, user_query);
+      response = await handleGeneralConversation(geminiApiKey, user_query, formattedHistory);
     }
 
     return new Response(JSON.stringify({ response }), {
