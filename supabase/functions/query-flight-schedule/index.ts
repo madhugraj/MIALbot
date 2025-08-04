@@ -6,6 +6,60 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Define the schema for the flight_schedule table to guide the LLM
+const FLIGHT_SCHEDULE_SCHEMA = `
+CREATE TABLE public.flight_schedule (
+  flight_schedule_id BIGINT NOT NULL,
+  aodb_flight_id BIGINT,
+  airline_code VARCHAR,
+  flight_number VARCHAR,
+  flight_schedule_type VARCHAR,
+  flight_type VARCHAR,
+  operational_suffix VARCHAR,
+  operational_status VARCHAR,
+  code_context VARCHAR,
+  departure_airport VARCHAR,
+  arrival_airport VARCHAR,
+  schedule_type VARCHAR,
+  terminal_name VARCHAR,
+  public_terminal_name VARCHAR,
+  origin_date_time TIMESTAMP WITHOUT TIME ZONE,
+  scheduled_arrival_time TIMESTAMP WITHOUT TIME ZONE,
+  estimated_arrival_time TIMESTAMP WITHOUT TIME ZONE,
+  actual_arrival_time TIMESTAMP WITHOUT TIME ZONE,
+  scheduled_departure_time TIMESTAMP WITHOUT TIME ZONE,
+  estimated_departure_time TIMESTAMP WITHOUT TIME ZONE,
+  actual_departure_time TIMESTAMP WITHOUT TIME ZONE,
+  final_boarding_time TIMESTAMP WITHOUT TIME ZONE,
+  boarding_time TIMESTAMP WITHOUT TIME ZONE,
+  actual_touchdown_time TIMESTAMP WITHOUT TIME ZONE,
+  actual_take_off_time TIMESTAMP WITHOUT TIME ZONE,
+  first_bag_unloaded_time TIMESTAMP WITHOUT TIME ZONE,
+  last_bag_unloaded_time TIMESTAMP WITHOUT TIME ZONE,
+  gate_open_time TIMESTAMP WITHOUT TIME ZONE,
+  gate_close_time TIMESTAMP WITHOUT TIME ZONE,
+  ten_miles_out_time TIMESTAMP WITHOUT TIME ZONE,
+  stand_bay VARCHAR,
+  service_type VARCHAR,
+  special_action VARCHAR,
+  delay_code VARCHAR,
+  delay_duration INTERVAL,
+  remark_text_code VARCHAR,
+  remark_free_text TEXT,
+  created_by VARCHAR,
+  created_dt TIMESTAMP WITHOUT TIME ZONE,
+  updated_by VARCHAR,
+  updated_dt TIMESTAMP WITHOUT TIME ZONE,
+  airline_name VARCHAR,
+  departure_airport_name VARCHAR,
+  arrival_airport_name VARCHAR,
+  deleted_dt TIMESTAMP WITHOUT TIME ZONE,
+  operational_status_description VARCHAR,
+  gate_name VARCHAR,
+  service_type_desc VARCHAR
+);
+`;
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -13,6 +67,14 @@ serve(async (req) => {
 
   try {
     const { user_query } = await req.json();
+    console.log("User Query:", user_query);
+
+    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
+
+    if (!geminiApiKey) {
+      console.error('GEMINI_API_KEY is not set in Supabase secrets.');
+      throw new Error('GEMINI_API_KEY is not set in Supabase secrets.');
+    }
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -27,36 +89,78 @@ serve(async (req) => {
     let sqlQuery = '';
     let naturalLanguageResponse = '';
 
-    // --- START: Placeholder for LLM-based SQL generation ---
-    // In a real application, an LLM (e.g., Gemini) would be used here
-    // to convert `user_query` into a SQL query based on the `flight_schedule` schema.
-    // For demonstration, we'll hardcode a response for a specific query.
+    const prompt = `You are a PostgreSQL query generator. Given the following table schema for 'flight_schedule':
+\`\`\`sql
+${FLIGHT_SCHEDULE_SCHEMA}
+\`\`\`
+Generate a PostgreSQL query based on the user's request. Only output the SQL query, nothing else. Do not include any explanations or additional text.
+If the request cannot be fulfilled with the given schema, return an empty string.
 
-    if (user_query.toLowerCase().includes("indigo flights from mumbai to delhi today")) {
-      sqlQuery = `SELECT flight_number, airline_name, departure_airport_name, arrival_airport_name, scheduled_departure_time, estimated_departure_time, actual_departure_time, terminal_name, gate_name, operational_status_description FROM flight_schedule WHERE airline_name ILIKE '%Indigo%' AND departure_airport_name ILIKE '%Mumbai%' AND arrival_airport_name ILIKE '%Delhi%' AND scheduled_departure_time::date = CURRENT_DATE ORDER BY scheduled_departure_time DESC LIMIT 10;`;
-    } else if (user_query.toLowerCase().includes("delayed flights from bangalore")) {
-      sqlQuery = `SELECT flight_number, airline_name, departure_airport_name, arrival_airport_name, scheduled_departure_time, estimated_departure_time, actual_departure_time, terminal_name, gate_name, operational_status_description FROM flight_schedule WHERE departure_airport_name ILIKE '%Bangalore%' AND operational_status_description ILIKE '%Delayed%' ORDER BY scheduled_departure_time DESC LIMIT 10;`;
+User request: "${user_query}"`;
+
+    console.log("Prompt sent to Gemini:", prompt);
+
+    const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${geminiApiKey}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: prompt }]
+        }]
+      }),
+    });
+
+    if (!geminiResponse.ok) {
+      const errorText = await geminiResponse.text();
+      console.error(`Gemini API error: ${geminiResponse.status} - ${errorText}`);
+      throw new Error(`Failed to get response from Gemini API: ${geminiResponse.statusText}`);
     }
-    else {
-      naturalLanguageResponse = "I can only answer specific queries about flight schedules, such as 'Show all Indigo flights from Mumbai to Delhi today' or 'List delayed flights from Bangalore'.";
+
+    const geminiData = await geminiResponse.json();
+    console.log("Raw Gemini Response:", JSON.stringify(geminiData, null, 2));
+    
+    if (geminiData.candidates && geminiData.candidates.length > 0 && geminiData.candidates[0].content && geminiData.candidates[0].content.parts && geminiData.candidates[0].content.parts.length > 0) {
+      const generatedText = geminiData.candidates[0].content.parts[0].text;
+      console.log("Generated Text from Gemini:", generatedText);
+      
+      const sqlMatch = generatedText.match(/```sql\n([\s\S]*?)\n```/);
+      if (sqlMatch && sqlMatch[1]) {
+        sqlQuery = sqlMatch[1].trim();
+        console.log("Extracted SQL from markdown:", sqlQuery);
+      } else {
+        sqlQuery = generatedText.trim();
+        console.log("Assuming entire response is SQL:", sqlQuery);
+      }
+    } else {
+      console.warn("Gemini response did not contain expected content structure.");
     }
-    // --- END: Placeholder for LLM-based SQL generation ---
 
     if (sqlQuery) {
+      console.log("Final SQL Query to execute:", sqlQuery);
       const { data, error } = await supabase.rpc('execute_sql_query', { query_text: sqlQuery });
 
       if (error) {
         console.error('SQL Execution Error:', error);
         naturalLanguageResponse = `I encountered an error while fetching data: ${error.message}.`;
-      } else if (data && data.length > 0) {
-        // Format the results into a natural language response
-        naturalLanguageResponse = "Here are the flights I found:\n\n";
-        data.forEach((row: any) => {
-          naturalLanguageResponse += `Flight ${row.flight_number} (${row.airline_name}) from ${row.departure_airport_name} to ${row.arrival_airport_name}. Scheduled: ${new Date(row.scheduled_departure_time).toLocaleString()}. Status: ${row.operational_status_description || 'N/A'}.\n`;
-        });
+      } else if (data) {
+        console.log("SQL Query Result Data:", JSON.stringify(data, null, 2));
+        if (Array.isArray(data) && data.length > 0) {
+          naturalLanguageResponse = "Here are the results:\n\n";
+          data.forEach((row: any) => {
+            naturalLanguageResponse += Object.entries(row).map(([key, value]) => `${key}: ${value}`).join(', ') + '.\n';
+          });
+        } else if (typeof data === 'object' && data !== null && 'count' in data) {
+          naturalLanguageResponse = `The count is: ${data.count}.`;
+        } else {
+          naturalLanguageResponse = "No specific data found matching your query, but the query executed successfully.";
+        }
       } else {
-        naturalLanguageResponse = "No flights found matching your criteria.";
+        naturalLanguageResponse = "No data received from the query.";
       }
+    } else {
+      naturalLanguageResponse = "I couldn't generate a SQL query for that request. Please try rephrasing your question or ask about flight schedules, delays, or counts.";
     }
 
     return new Response(JSON.stringify({ response: naturalLanguageResponse }), {
@@ -65,7 +169,7 @@ serve(async (req) => {
     });
 
   } catch (error) {
-    console.error('Edge Function Error:', error);
+    console.error('Edge Function Catch Block Error:', error);
     return new Response(JSON.stringify({ error: error.message }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 500,
