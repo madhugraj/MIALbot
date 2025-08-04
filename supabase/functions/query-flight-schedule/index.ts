@@ -60,6 +60,7 @@ User request: "${user_query}"`;
 
     console.log("Prompt sent to Gemini:", prompt);
 
+    // Changed model to gemini-2.5-flash
     const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`, {
       method: 'POST',
       headers: {
@@ -107,17 +108,14 @@ User request: "${user_query}"`;
       } else if (data) {
         console.log("SQL Query Result Data:", JSON.stringify(data, null, 2));
         if (Array.isArray(data) && data.length > 0) {
-          // Check if it's a count query result (e.g., [{"count": 5}])
-          if (data.length === 1 && typeof data[0] === 'object' && data[0] !== null && 'count' in data[0]) {
-            naturalLanguageResponse = `The count is: ${data[0].count}.`;
-          } else {
-            naturalLanguageResponse = "Here are the results:\n\n";
-            data.forEach((row: any) => {
-              naturalLanguageResponse += Object.entries(row).map(([key, value]) => `${key}: ${value}`).join(', ') + '.\n';
-            });
-          }
+          naturalLanguageResponse = "Here are the results:\n\n";
+          data.forEach((row: any) => {
+            naturalLanguageResponse += Object.entries(row).map(([key, value]) => `${key}: ${value}`).join(', ') + '.\n';
+          });
+        } else if (typeof data === 'object' && data !== null && 'count' in data) {
+          naturalLanguageResponse = `The count is: ${data.count}.`;
         } else {
-          naturalLanguageResponse = "No specific data found matching your query.";
+          naturalLanguageResponse = "No specific data found matching your query, but the query executed successfully.";
         }
       } else {
         naturalLanguageResponse = "No data received from the query.";
