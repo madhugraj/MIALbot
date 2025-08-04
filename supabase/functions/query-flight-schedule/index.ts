@@ -98,12 +98,10 @@ ${JSON.stringify(schemaData.schema_json)}
       sqlQuery = generatedText.trim();
     }
     
-    // Remove trailing semicolon if it exists
-    if (sqlQuery.endsWith(';')) {
-      sqlQuery = sqlQuery.slice(0, -1);
-    }
+    // Aggressively remove all semicolons and trim whitespace.
+    sqlQuery = sqlQuery.replace(/;/g, '').trim();
 
-    console.log("Parsed SQL Query:", sqlQuery);
+    console.log("Cleaned SQL Query:", sqlQuery);
 
     let naturalLanguageResponse;
 
