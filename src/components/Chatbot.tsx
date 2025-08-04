@@ -7,6 +7,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SendHorizonal, Plus, Mic, Edit, X } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { createClient } from "@/integrations/supabase/client"; // Import Supabase client
 
 interface Message {
   id: number;
@@ -21,6 +22,8 @@ const Chatbot: React.FC = () => {
   const [isBotTyping, setIsBotTyping] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const supabase = createClient(); // Initialize Supabase client
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -29,7 +32,7 @@ const Chatbot: React.FC = () => {
     scrollToBottom();
   }, [messages, isBotTyping]);
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (input.trim() === "") return;
 
     const newUserMessage: Message = {
@@ -41,16 +44,39 @@ const Chatbot: React.FC = () => {
     setInput("");
     setIsBotTyping(true);
 
-    // Simulate a bot response (this is where your backend API call would go)
-    setTimeout(() => {
-      const botResponse: Message = {
+    try {
+      // Invoke the Edge Function
+      const { data, error } = await supabase.functions.invoke('query-flight-schedule', {
+        body: { user_query: newUserMessage.text },
+      });
+
+      if (error) {
+        console.error("Error invoking Edge Function:", error);
+        const botErrorResponse: Message = {
+          id: messages.length + 2,
+          text: "Sorry, I couldn't process your request due to an error.",
+          sender: "bot",
+        };
+        setMessages((prevMessages) => [...prevMessages, botErrorResponse]);
+      } else {
+        const botResponse: Message = {
+          id: messages.length + 2,
+          text: data.response, // The natural language response from the Edge Function
+          sender: "bot",
+        };
+        setMessages((prevMessages) => [...prevMessages, botResponse]);
+      }
+    } catch (fetchError) {
+      console.error("Network or unexpected error:", fetchError);
+      const botNetworkErrorResponse: Message = {
         id: messages.length + 2,
-        text: `Echo: "${newUserMessage.text}". (This would be a response from your PostgreSQL query)`,
+        text: "It seems there's a problem connecting. Please try again later.",
         sender: "bot",
       };
-      setMessages((prevMessages) => [...prevMessages, botResponse]);
+      setMessages((prevMessages) => [...prevMessages, botNetworkErrorResponse]);
+    } finally {
       setIsBotTyping(false);
-    }, 1500);
+    }
   };
 
   return (
