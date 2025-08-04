@@ -32,7 +32,6 @@ serve(async (req) => {
       }
     );
 
-    // Fetch schema dynamically from Supabase
     const { data: schemaData, error: schemaError } = await supabase
       .from('schema_metadata')
       .select('schema_json')
@@ -49,18 +48,22 @@ serve(async (req) => {
     let sqlQuery = '';
     let naturalLanguageResponse = '';
 
-    const prompt = `You are a PostgreSQL query generator. Given the following table schema for 'flight_schedule' in JSON format:
+    const prompt = `You are an expert PostgreSQL assistant. Your task is to generate a single, read-only \`SELECT\` query to answer a user's question about flight schedules.
+You are given the table schema for 'flight_schedule':
 \`\`\`json
 ${JSON.stringify(flightScheduleSchema, null, 2)}
 \`\`\`
-Generate a PostgreSQL query based on the user's request. Only output the SQL query, nothing else. Do not include any explanations or additional text.
-If the request cannot be fulfilled with the given schema, return an empty string.
+- ALWAYS generate a valid \`SELECT\` query.
+- For questions about counts, use \`SELECT COUNT(*) as count FROM ...\`.
+- For questions about specific flights, select relevant columns. Avoid \`SELECT *\`.
+- If the user's request is ambiguous or cannot be answered with a \`SELECT\` query on this table, return the text "INVALID_QUERY".
 
-User request: "${user_query}"`;
+User request: "${user_query}"
+
+Generated SQL Query:`;
 
     console.log("Prompt sent to Gemini:", prompt);
 
-    // Changed model to gemini-2.5-flash
     const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`, {
       method: 'POST',
       headers: {
@@ -98,24 +101,27 @@ User request: "${user_query}"`;
       console.warn("Gemini response did not contain expected content structure.");
     }
 
-    if (sqlQuery) {
+    if (sqlQuery && sqlQuery.trim().toUpperCase() !== 'INVALID_QUERY') {
       console.log("Final SQL Query to execute:", sqlQuery);
       const { data, error } = await supabase.rpc('execute_sql_query', { query_text: sqlQuery });
 
       if (error) {
         console.error('SQL Execution Error:', error);
-        naturalLanguageResponse = `I encountered an error while fetching data: ${error.message}.`;
+        naturalLanguageResponse = `I'm sorry, I ran into a problem trying to find that information. The query I tried to run was invalid. Please try rephrasing your question.`;
       } else if (data) {
         console.log("SQL Query Result Data:", JSON.stringify(data, null, 2));
         if (Array.isArray(data) && data.length > 0) {
-          naturalLanguageResponse = "Here are the results:\n\n";
-          data.forEach((row: any) => {
-            naturalLanguageResponse += Object.entries(row).map(([key, value]) => `${key}: ${value}`).join(', ') + '.\n';
-          });
-        } else if (typeof data === 'object' && data !== null && 'count' in data) {
-          naturalLanguageResponse = `The count is: ${data.count}.`;
+          // Check for a count result
+          if (data.length === 1 && data[0].hasOwnProperty('count')) {
+             naturalLanguageResponse = `The result is: ${data[0].count}.`;
+          } else {
+            naturalLanguageResponse = "Here are the results:\n\n";
+            data.forEach((row: any) => {
+              naturalLanguageResponse += Object.entries(row).map(([key, value]) => `${key}: ${value}`).join(', ') + '.\n';
+            });
+          }
         } else {
-          naturalLanguageResponse = "No specific data found matching your query, but the query executed successfully.";
+          naturalLanguageResponse = "I couldn't find any data matching your query.";
         }
       } else {
         naturalLanguageResponse = "No data received from the query.";
