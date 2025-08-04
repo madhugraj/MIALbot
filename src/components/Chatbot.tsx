@@ -5,8 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { SendHorizonal, Plus, Mic, Edit, X } from "lucide-react"; // Added new icons
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"; // Added Avatar components
+import { SendHorizonal, Plus, Mic, Edit, X } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface Message {
   id: number;
@@ -59,9 +59,9 @@ const Chatbot: React.FC = () => {
         <div className="flex items-center space-x-3">
           <Avatar className="w-9 h-9">
             <AvatarImage src="https://github.com/shadcn.png" alt="Bot Avatar" />
-            <AvatarFallback>AR</AvatarFallback>
+            <AvatarFallback>MA</AvatarFallback>
           </Avatar>
-          <CardTitle className="text-lg font-semibold">Talk to Ari</CardTitle>
+          <CardTitle className="text-lg font-semibold">Talk to MIAlAssist</CardTitle>
         </div>
         <div className="flex space-x-2">
           <Button variant="ghost" size="icon" className="text-white hover:bg-white/20">
@@ -84,7 +84,7 @@ const Chatbot: React.FC = () => {
               {message.sender === "bot" && (
                 <Avatar className="w-8 h-8 mr-2 mt-auto">
                   <AvatarImage src="https://github.com/shadcn.png" alt="Bot Avatar" />
-                  <AvatarFallback>AR</AvatarFallback>
+                  <AvatarFallback>MA</AvatarFallback>
                 </Avatar>
               )}
               <div
@@ -102,7 +102,7 @@ const Chatbot: React.FC = () => {
             <div className="mb-3 flex justify-start">
               <Avatar className="w-8 h-8 mr-2 mt-auto">
                 <AvatarImage src="https://github.com/shadcn.png" alt="Bot Avatar" />
-                <AvatarFallback>AR</AvatarFallback>
+                <AvatarFallback>MA</AvatarFallback>
               </Avatar>
               <div className="p-3 rounded-xl bg-gray-100 text-gray-800 rounded-bl-sm rounded-tl-xl rounded-tr-xl rounded-br-xl">
                 <span className="animate-pulse">...</span>
