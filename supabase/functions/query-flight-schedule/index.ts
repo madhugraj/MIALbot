@@ -59,19 +59,15 @@ serve(async (req) => {
       throw new Error('Failed to retrieve table schema from database.');
     }
 
-    const sqlGenerationPrompt = `You are an expert PostgreSQL assistant. Your task is to generate a single, read-only \`SELECT\` query to answer a user's question about flight schedules.
-You are given the table schema for 'flight_schedule':
-\`\`\`json
-${JSON.stringify(schemaData.schema_json, null, 2)}
-\`\`\`
-- ALWAYS generate a valid \`SELECT\` query.
-- For questions about counts, use \`SELECT COUNT(*) as count FROM ...\`.
-- For questions about specific flights, select relevant columns. Avoid \`SELECT *\`.
-- If the user's request is ambiguous or cannot be answered with a \`SELECT\` query on this table, return the text "INVALID_QUERY".
+    const sqlGenerationPrompt = `You are a SQL generation bot. Your ONLY purpose is to convert a user's question into a PostgreSQL query.
+**RULES:**
+1. Your output MUST be a single, valid, read-only \`SELECT\` query.
+2. Your output must NOT contain ANY text other than the SQL query itself. No explanations, no greetings, no markdown like \`\`\`sql.
+3. The query MUST be for the 'flight_schedule' table, with this schema: ${JSON.stringify(schemaData.schema_json)}
+4. If a query is impossible or ambiguous, you MUST return the single word: INVALID_QUERY
 
-User request: "${user_query}"
-
-Generated SQL Query:`;
+**User Question:** "${user_query}"
+**SQL Query:**`;
 
     const generatedText = await callGemini(geminiApiKey, sqlGenerationPrompt);
     console.log("Generated Text from Gemini:", generatedText);
