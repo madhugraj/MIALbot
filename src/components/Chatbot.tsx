@@ -7,7 +7,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SendHorizonal, Plus, Mic, Edit, X } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { createClient } from "@/integrations/supabase/client"; // Import Supabase client
+import { supabase } from "@/integrations/supabase/client"; // Corrected import
 
 interface Message {
   id: number;
@@ -22,7 +22,8 @@ const Chatbot: React.FC = () => {
   const [isBotTyping, setIsBotTyping] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const supabase = createClient(); // Initialize Supabase client
+  // Supabase client is now directly imported
+  // const supabase = createClient(); // No longer needed here
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
