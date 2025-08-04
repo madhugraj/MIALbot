@@ -7,7 +7,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SendHorizonal, Plus, Mic, Edit, X } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { supabase } from "@/integrations/supabase/client"; // Corrected import
+import { supabase } from "@/integrations/supabase/client";
 
 interface Message {
   id: number;
@@ -21,9 +21,6 @@ const Chatbot: React.FC = () => {
   const [input, setInput] = useState<string>("");
   const [isBotTyping, setIsBotTyping] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Supabase client is now directly imported
-  // const supabase = createClient(); // No longer needed here
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -46,8 +43,8 @@ const Chatbot: React.FC = () => {
     setIsBotTyping(true);
 
     try {
-      // Invoke the Edge Function
-      const { data, error } = await supabase.functions.invoke('query-flight-schedule', {
+      // Invoke the new Edge Function agent
+      const { data, error } = await supabase.functions.invoke('chatbot-agent', {
         body: { user_query: newUserMessage.text },
       });
 
