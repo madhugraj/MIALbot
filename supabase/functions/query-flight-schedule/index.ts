@@ -59,12 +59,30 @@ serve(async (req) => {
       throw new Error('Failed to retrieve table schema from database.');
     }
 
-    const sqlGenerationPrompt = `You are a SQL generation bot. Your ONLY purpose is to convert a user's question into a PostgreSQL query.
-**RULES:**
-1. Your output MUST be a single, valid, read-only \`SELECT\` query.
-2. Your output must NOT contain ANY text other than the SQL query itself. No explanations, no greetings, no markdown like \`\`\`sql.
-3. The query MUST be for the 'flight_schedule' table, with this schema: ${JSON.stringify(schemaData.schema_json)}
-4. If a query is impossible or ambiguous, you MUST return the single word: INVALID_QUERY
+    const sqlGenerationPrompt = `You are an AI agent responsible for answering user questions using data from the \`flight_schedule\` table in PostgreSQL.
+You must convert each user message into a safe, read-only SQL SELECT query.
+
+The schema for the 'flight_schedule' table is:
+${JSON.stringify(schemaData.schema_json)}
+
+**Rules & Guidelines:**
+✔️ Only use the table \`flight_schedule\`.
+✔️ Never modify, insert, delete, or update data.
+✔️ Always include a LIMIT clause (e.g., LIMIT 10) to prevent excessive data retrieval.
+✔️ Prefer selecting these columns: flight_number, airline_name, departure_airport_name, arrival_airport_name, scheduled_departure_time, estimated_departure_time, actual_departure_time, terminal_name, gate_name, operational_status_description.
+✔️ Use fuzzy search with ILIKE for city or airport names (e.g., departure_airport_name ILIKE '%mumbai%').
+✔️ If the user's question implies a date or time, always order the results by scheduled_departure_time in descending order (DESC).
+✔️ If a query is impossible or ambiguous, you MUST return the single word: INVALID_QUERY.
+
+**Example Questions you should support:**
+- "Show all Indigo flights from Mumbai to Delhi today"
+- "What flights are scheduled to arrive at Terminal 2?"
+- "List delayed flights from Bangalore"
+- "Which flights have not taken off yet?"
+- "Flights with last bag unloaded after 10 AM today"
+- "Flights operated by Air India from Chennai to Dubai"
+
+**Only return SQL — no explanation or commentary.**
 
 **User Question:** "${user_query}"
 **SQL Query:**`;
