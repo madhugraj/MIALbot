@@ -66,7 +66,12 @@ ${formattedHistory}
 **CRITICAL INSTRUCTIONS:**
 1.  **Prioritize Context:** The user's latest message might be a short follow-up (e.g., "what time?", "and the gate?"). ALWAYS check the conversation history to understand the full context and find the relevant flight number or airport.
 2.  **Infer from History:** Use entities (like flight numbers, dates, or airports) from previous turns to complete the current query.
-3.  **Be Specific:** When a user asks about landing/arrival, use \`actual_arrival_time\` or \`estimated_arrival_time\`. For departure, use \`scheduled_departure_time\` or \`estimated_departure_time\`.
+3.  **Column Selection Logic:**
+    *   For **departure** times, you MUST query \`scheduled_departure_time\` and \`estimated_departure_time\`.
+    *   For **arrival** times, you MUST query \`scheduled_arrival_time\` and \`estimated_arrival_time\`.
+    *   For **gate** information, query \`gate_name\`.
+    *   For **terminal** information, query \`terminal_name\`.
+    *   For flight **status**, query \`operational_status_description\`.
 4.  **Safe Queries Only:** Only generate \`SELECT\` statements. Never \`UPDATE\`, \`DELETE\`, or \`INSERT\`.
 5.  **Invalid Queries:** If you cannot construct a meaningful query from the user's message and the history, return the single word: INVALID_QUERY.
 
@@ -79,6 +84,11 @@ ${formattedHistory}
 *   History: \`User: which terminal did flight BA2490 reach? \\n Assistant: Flight BA2490 arrived at Terminal 3.\`
 *   Latest User Question: "what time?"
 *   Your SQL Query: \`SELECT actual_arrival_time FROM public.flight_schedule WHERE flight_number ILIKE '%BA2490%'\`
+
+**Example 3: Direct Departure Time Question**
+*   History: \`(empty)\`
+*   Latest User Question: "What is the departure time for flight DL456?"
+*   Your SQL Query: \`SELECT scheduled_departure_time, estimated_departure_time FROM public.flight_schedule WHERE flight_number ILIKE '%DL456%'\`
 
 **Latest User Question:** "${user_query}"
 **SQL Query:**`;
