@@ -96,7 +96,7 @@ const Chatbot: React.FC = () => {
       <CardHeader className="pt-6 pb-4 flex flex-row items-center justify-between bg-transparent">
         <div className="flex items-center space-x-3">
           <Avatar className="w-10 h-10 ring-2 ring-purple-400 ring-offset-2 ring-offset-white">
-            <AvatarImage src="https://github.com/shadcn.png" alt="Bot Avatar" />
+            <AvatarImage src="https://github.com/shadcn.png" alt="Mia Avatar" />
             <AvatarFallback>M</AvatarFallback>
           </Avatar>
           <CardTitle className="text-lg font-semibold text-gray-800">Talk to Mia</CardTitle>
@@ -119,7 +119,7 @@ const Chatbot: React.FC = () => {
               >
                 {message.sender === "bot" && (
                   <Avatar className="w-8 h-8">
-                    <AvatarImage src="https://github.com/shadcn.png" alt="Bot Avatar" />
+                    <AvatarImage src="https://github.com/shadcn.png" alt="Mia Avatar" />
                     <AvatarFallback>M</AvatarFallback>
                   </Avatar>
                 )}
@@ -137,7 +137,7 @@ const Chatbot: React.FC = () => {
             {isBotTyping && (
               <div className="flex items-end gap-2.5 justify-start">
                 <Avatar className="w-8 h-8">
-                  <AvatarImage src="https://github.com/shadcn.png" alt="Bot Avatar" />
+                  <AvatarImage src="https://github.com/shadcn.png" alt="Mia Avatar" />
                   <AvatarFallback>M</AvatarFallback>
                 </Avatar>
                 <div className="p-3 px-4 rounded-2xl bg-white text-gray-800 rounded-bl-lg shadow-sm">
