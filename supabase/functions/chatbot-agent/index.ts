@@ -63,32 +63,47 @@ ${sample_data_prompt_part}
 **Conversation History:**
 ${formattedHistory}
 
-**CRITICAL INSTRUCTIONS:**
-1.  **Prioritize Context:** The user's latest message might be a short follow-up (e.g., "what time?", "and the gate?"). ALWAYS check the conversation history to understand the full context and find the relevant flight number or airport.
-2.  **Infer from History:** Use entities (like flight numbers, dates, or airports) from previous turns to complete the current query.
-3.  **Column Selection Logic:**
-    *   For **departure** times, you MUST query \`scheduled_departure_time\` and \`estimated_departure_time\`.
-    *   For **arrival** times, you MUST query \`scheduled_arrival_time\` and \`estimated_arrival_time\`.
+**CRITICAL QUERY GENERATION RULES:**
+1.  **Analyze User Input:**
+    *   Carefully parse the user's latest message to identify an airline code (e.g., "AA", "BA", "DL") and a flight number (e.g., "123", "2490").
+    *   The user might provide only a number, only an airline, or both.
+
+2.  **Use the Correct Columns:**
+    *   The flight identifier is split into two columns: \`airline_code\` and \`flight_number\`.
+    *   You MUST filter on \`airline_code\` for the airline letters and \`flight_number\` for the digits.
+    *   Example: For "flight AA123", the query should be \`... WHERE airline_code ILIKE '%AA%' AND flight_number ILIKE '%123%'\`.
+
+3.  **Handle Ambiguous Queries:**
+    *   If the user only provides a number like "flight 5018", your query should be \`... WHERE flight_number ILIKE '%5018%'\`. This is correct.
+    *   If the user only provides an airline, query by airline.
+
+4.  **Use Context from History:**
+    *   For follow-up questions (e.g., "and the gate?"), you MUST look at the conversation history to find the flight number and airline code from a previous message.
+
+5.  **Select the Right Information:**
+    *   For **departure** times, query \`scheduled_departure_time\` and \`estimated_departure_time\`.
+    *   For **arrival** times, query \`scheduled_arrival_time\` and \`estimated_arrival_time\`.
     *   For **gate** information, query \`gate_name\`.
-    *   For **terminal** information, query \`terminal_name\`.
     *   For flight **status**, query \`operational_status_description\`.
-4.  **Safe Queries Only:** Only generate \`SELECT\` statements. Never \`UPDATE\`, \`DELETE\`, or \`INSERT\`.
-5.  **Invalid Queries:** If you cannot construct a meaningful query from the user's message and the history, return the single word: INVALID_QUERY.
 
-**Example 1: Follow-up on Status**
-*   History: \`User: What's the status of flight AA123? \\n Assistant: Flight AA123 is on time, scheduled to arrive at Gate C5.\`
-*   Latest User Question: "and what time does it land?"
-*   Your SQL Query: \`SELECT estimated_arrival_time, actual_arrival_time FROM public.flight_schedule WHERE flight_number ILIKE '%AA123%'\`
+6.  **Safety First:**
+    *   Only generate \`SELECT\` statements.
+    *   If you cannot construct a valid query, return the single word: \`INVALID_QUERY\`.
 
-**Example 2: Follow-up on Terminal**
-*   History: \`User: which terminal did flight BA2490 reach? \\n Assistant: Flight BA2490 arrived at Terminal 3.\`
-*   Latest User Question: "what time?"
-*   Your SQL Query: \`SELECT actual_arrival_time FROM public.flight_schedule WHERE flight_number ILIKE '%BA2490%'\`
-
-**Example 3: Direct Departure Time Question**
-*   History: \`(empty)\`
+**Example 1: Full Flight ID**
+*   History: (empty)
 *   Latest User Question: "What is the departure time for flight DL456?"
-*   Your SQL Query: \`SELECT scheduled_departure_time, estimated_departure_time FROM public.flight_schedule WHERE flight_number ILIKE '%DL456%'\`
+*   Your SQL Query: \`SELECT scheduled_departure_time, estimated_departure_time FROM public.flight_schedule WHERE airline_code ILIKE '%DL%' AND flight_number ILIKE '%456%'\`
+
+**Example 2: Number Only**
+*   History: (empty)
+*   Latest User Question: "What is the status of flight 5018?"
+*   Your SQL Query: \`SELECT operational_status_description FROM public.flight_schedule WHERE flight_number ILIKE '%5018%'\`
+
+**Example 3: Follow-up Question**
+*   History: \`User: What's the status of flight AA123? \\n Assistant: Flight AA123 is on time.\`
+*   Latest User Question: "and what time does it land?"
+*   Your SQL Query: \`SELECT scheduled_arrival_time, estimated_arrival_time FROM public.flight_schedule WHERE airline_code ILIKE '%AA%' AND flight_number ILIKE '%123%'\`
 
 **Latest User Question:** "${user_query}"
 **SQL Query:**`;
