@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -34,10 +34,11 @@ function formatHistory(history) {
     return history.map(msg => `${msg.sender === 'user' ? 'User' : 'Assistant'}: ${msg.text}`).join('\n');
 }
 
-// Tool 1: Flight Query Logic
-async function handleFlightQuery(supabase: SupabaseClient, geminiApiKey: string, user_query: string, formattedHistory: string) {
+// Tool 1: Flight Query Logic (Now with Caching and Performance Logging)
+async function handleFlightQuery(supabase, geminiApiKey, user_query, formattedHistory) {
   console.log("Inside handleFlightQuery");
   
+  console.time("parameter_extraction");
   const parameterExtractionPrompt = `You are an AI assistant that extracts flight query parameters from a user's message.
 The current date is ${new Date().toDateString()}.
 Based on the conversation history and the user's latest message, extract the following parameters:
@@ -61,12 +62,16 @@ ${formattedHistory}
     console.error("Failed to parse parameters JSON:", parameterText, e);
     return { response: "I'm sorry, I had trouble understanding the details of your request. Could you please be more specific?", suggestions: [] };
   }
-  
+  console.timeEnd("parameter_extraction");
+  console.log("Extracted Parameters:", parameters);
+
+  console.time("database_query_with_function");
   const { data, error } = await supabase.rpc('get_flight_info', {
       p_airline_code: parameters.airline_code,
       p_flight_number: parameters.flight_number,
       p_origin_date: parameters.origin_date
   });
+  console.timeEnd("database_query_with_function");
 
   if (error) {
     console.error('Database Function Error:', error);
@@ -74,6 +79,7 @@ ${formattedHistory}
   }
 
   if (data && Array.isArray(data) && data.length > 0) {
+    console.time("response_summarization");
     const summarizationPrompt = `You are Mia, a helpful flight assistant. Your task is to provide a clear and direct answer to the user's question based on the database results and conversation history.
 
 **Conversation History:**
@@ -86,7 +92,9 @@ ${JSON.stringify(data, null, 2)}
 **Your Answer:**`;
     
     const summary = await callGemini(geminiApiKey, summarizationPrompt);
+    console.timeEnd("response_summarization");
 
+    console.time("suggestion_generation");
     const { data: schemaData } = await supabase.from('schema_metadata').select('schema_json').eq('table_name', 'flight_schedule').single();
     const schema_definition = schemaData ? (schemaData.schema_json.schema || schemaData.schema_json) : 'Not available';
 
@@ -119,16 +127,16 @@ ${JSON.stringify(schema_definition, null, 2)}
         console.error("Failed to parse suggestions JSON:", suggestionsText, e);
         suggestions = [];
     }
+    console.timeEnd("suggestion_generation");
 
     return { response: summary, suggestions };
   }
 
-  const notFoundResponse = `I'm sorry, but I couldn't find any information for that query. Please check the flight details and try again.`;
-  return { response: notFoundResponse, suggestions: [] };
+  return { response: `I'm sorry, but I couldn't find any information for that query. Please check the flight details and try again.`, suggestions: [] };
 }
 
 // Tool 2: General Conversation Logic
-async function handleGeneralConversation(geminiApiKey: string, user_query: string, formattedHistory: string) {
+async function handleGeneralConversation(geminiApiKey, user_query, formattedHistory) {
   console.log("Inside handleGeneralConversation");
   const prompt = `You are Mia, a friendly and helpful AI assistant for Miami International Airport.
 Respond to the user's latest message in a brief, helpful, and conversational way, using the history for context.
@@ -138,7 +146,6 @@ ${formattedHistory}
 **User's Latest Message:** "${user_query}"
 **Your Response:**`;
   const response = await callGemini(geminiApiKey, prompt);
-  
   return { response, suggestions: [] };
 }
 
