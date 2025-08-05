@@ -154,7 +154,7 @@ ${JSON.stringify(data, null, 2)}
   }
 
   console.log("No data found for the query.");
-  return "I couldn't find any data matching your query.";
+  return `I'm sorry, but I couldn't find any information for that query. To help troubleshoot, this is the database query I ran: \`${sqlQuery}\``;
 }
 
 // Tool 2: General Conversation Logic
@@ -188,7 +188,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
     
-    const formattedHistory = formatHistory(history);
+    const formattedHistory = format_history(history);
 
     // 1. Intent Classification
     const intentClassificationPrompt = `You are a router agent. Your job is to classify the user's latest intent based on the.
