@@ -48,11 +48,18 @@ async function handleFlightQuery(supabase, geminiApiKey, user_query, formattedHi
     throw new Error('Failed to retrieve table schema for flight query.');
   }
 
+  const schema_definition = schemaData.schema_json.schema || schemaData.schema_json;
+  const sample_data = schemaData.schema_json.sample_data;
+
+  const sample_data_prompt_part = sample_data 
+    ? `\nHere is a sample row from the table to give you context on the data format:\n${JSON.stringify(sample_data, null, 2)}\n` 
+    : '';
+
   const sqlGenerationPrompt = `You are an expert AI assistant that translates user questions into SQL queries for a flight database. Your primary goal is to use the provided conversation history to answer follow-up questions accurately.
 
 The schema for the 'public.flight_schedule' table is:
-${JSON.stringify(schemaData.schema_json)}
-
+${JSON.stringify(schema_definition, null, 2)}
+${sample_data_prompt_part}
 **Conversation History:**
 ${formattedHistory}
 
