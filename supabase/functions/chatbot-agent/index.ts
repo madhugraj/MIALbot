@@ -137,23 +137,24 @@ ${JSON.stringify(data, null, 2)}
     
     const summary = await callGemini(geminiApiKey, summarizationPrompt);
 
-    const suggestionGenerationPrompt = `You are a helpful AI assistant. Based on the user's last question and the information you just provided, generate 3-4 short, relevant follow-up questions the user might ask next.
+    const suggestionGenerationPrompt = `You are an expert AI assistant that generates relevant follow-up questions for a user inquiring about flight information. Your suggestions MUST be answerable using ONLY the provided database schema.
 
-**Conversation History:**
-${formattedHistory}
-**User's Latest Question:** "${user_query}"
-**Your Last Answer:**
-"${summary}"
-**Database Results (for context):**
-${JSON.stringify(data, null, 2)}
+**Database Schema for 'flight_schedule' table:**
+${JSON.stringify(schema_definition, null, 2)}
+
+**Conversation Context:**
+*   **History:** ${formattedHistory}
+*   **User's Latest Question:** "${user_query}"
+*   **Your Last Answer:** "${summary}"
+*   **Data Used for Answer:** ${JSON.stringify(data, null, 2)}
 
 **CRITICAL INSTRUCTIONS:**
-1.  Generate questions that are natural continuations of the conversation.
-2.  Focus on details that were NOT in your last answer. For example, if you just gave the status, suggest asking about the gate, arrival time, or baggage claim.
-3.  Keep the questions short and to the point.
-4.  Return the suggestions as a JSON array of strings. Example: \`["What's the arrival time?", "Which gate is it at?", "Is it delayed?"]\`
-5.  If no relevant suggestions come to mind, return an empty array \`[]\`.
-6.  Do not include markdown like \`\`\`json.
+1.  **Schema-Bound:** Generate questions that can be answered using the columns in the schema above (e.g., \`gate_name\`, \`terminal_name\`, \`arrival_airport_name\`, \`delay_duration\`).
+2.  **Avoid Unanswerable Questions:** DO NOT suggest questions about topics not covered by the schema, such as "How do I contact the airline?", "Can I change my seat?", or "Where is baggage claim?".
+3.  **Contextual & Relevant:** The questions should be a natural continuation of the conversation and focus on details NOT already provided in "Your Last Answer".
+4.  **Format:** Return a JSON array of 3-4 short, to-the-point questions. Example: \`["What's the arrival time?", "Which gate is it at?"]\`
+5.  **Empty Array on Failure:** If no relevant, answerable suggestions come to mind, return an empty array \`[]\`.
+6.  **No Markdown:** Do not include markdown like \`\`\`json.
 
 **Follow-up Suggestions (JSON Array):**`;
 
