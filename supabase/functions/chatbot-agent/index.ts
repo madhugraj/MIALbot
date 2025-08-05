@@ -97,14 +97,26 @@ ${formattedHistory}
   console.log("SQL query successful. Data:", data);
 
   if (data && Array.isArray(data) && data.length > 0) {
-    const summarizationPrompt = `You are a helpful flight assistant. A user asked: "${user_query}".
-The following data was retrieved from the database in JSON format:
+    const summarizationPrompt = `You are Mia, a helpful flight assistant. Your task is to provide a clear and direct answer to the user's question based on the database results and conversation history.
+
+**Conversation History:**
+${formattedHistory}
+
+**User's Latest Question:** "${user_query}"
+
+**Database Results (JSON):**
 \`\`\`json
 ${JSON.stringify(data, null, 2)}
 \`\`\`
-Based on this data and the conversation history, provide a concise, natural language answer. Do not just list the data. Summarize it in a friendly and helpful way.
-**Conversation History:**
-${formattedHistory}`;
+
+**CRITICAL INSTRUCTIONS:**
+1.  **Directly Answer the Question:** Use the "Database Results" to directly answer the "User's Latest Question".
+2.  **Use Context:** Refer to the "Conversation History" to understand the full context, especially for follow-up questions.
+3.  **Be Concise:** Provide a short, natural language response. Do not just repeat the JSON data.
+4.  **Handle No Data:** If the database results are empty, state that you couldn't find the information.
+5.  **Example:** If the user asked "what time does it land?" and the data is \`[{"actual_arrival_time": "2024-08-20T14:30:00"}]\`, a good response is "The flight landed at 2:30 PM."
+
+**Your Answer:**`;
     console.log("Summarizing result...");
     return await callGemini(geminiApiKey, summarizationPrompt);
   }
@@ -147,7 +159,7 @@ serve(async (req) => {
     const formattedHistory = formatHistory(history);
 
     // 1. Intent Classification
-    const intentClassificationPrompt = `You are a router agent. Your job is to classify the user's latest intent based on the conversation history.
+    const intentClassificationPrompt = `You are a router agent. Your job is to classify the user's latest intent based on the.
 Respond with one of the following tool names:
 - 'FLIGHT_QUERY': If the user is asking about flights, delays, terminals, gates, airlines, or a short follow-up question related to a previous flight query.
 - 'GENERAL_CONVERSATION': If the user is making small talk, greeting, or asking a question not related to flights.
