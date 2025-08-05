@@ -96,10 +96,10 @@ const Chatbot: React.FC = () => {
       <CardHeader className="pt-6 pb-4 flex flex-row items-center justify-between bg-transparent">
         <div className="flex items-center space-x-3">
           <Avatar className="w-10 h-10 ring-2 ring-purple-400 ring-offset-2 ring-offset-white">
-            <AvatarImage src="https://i.pravatar.cc/150?u=a042581f4e29026704d" alt="Bot Avatar" />
-            <AvatarFallback>A</AvatarFallback>
+            <AvatarImage src="https://github.com/shadcn.png" alt="Bot Avatar" />
+            <AvatarFallback>M</AvatarFallback>
           </Avatar>
-          <CardTitle className="text-lg font-semibold text-gray-800">Talk to Ari</CardTitle>
+          <CardTitle className="text-lg font-semibold text-gray-800">Talk to Mia</CardTitle>
         </div>
         <div className="flex items-center space-x-4">
             <MessageSquarePlus className="w-5 h-5 text-gray-500 cursor-pointer hover:text-gray-800" />
@@ -119,8 +119,8 @@ const Chatbot: React.FC = () => {
               >
                 {message.sender === "bot" && (
                   <Avatar className="w-8 h-8">
-                    <AvatarImage src="https://i.pravatar.cc/150?u=a042581f4e29026704d" alt="Bot Avatar" />
-                    <AvatarFallback>A</AvatarFallback>
+                    <AvatarImage src="https://github.com/shadcn.png" alt="Bot Avatar" />
+                    <AvatarFallback>M</AvatarFallback>
                   </Avatar>
                 )}
                 <div
@@ -137,8 +137,8 @@ const Chatbot: React.FC = () => {
             {isBotTyping && (
               <div className="flex items-end gap-2.5 justify-start">
                 <Avatar className="w-8 h-8">
-                  <AvatarImage src="https://i.pravatar.cc/150?u=a042581f4e29026704d" alt="Bot Avatar" />
-                  <AvatarFallback>A</AvatarFallback>
+                  <AvatarImage src="https://github.com/shadcn.png" alt="Bot Avatar" />
+                  <AvatarFallback>M</AvatarFallback>
                 </Avatar>
                 <div className="p-3 px-4 rounded-2xl bg-white text-gray-800 rounded-bl-lg shadow-sm">
                   <div className="flex items-center justify-center space-x-1.5">
@@ -157,7 +157,7 @@ const Chatbot: React.FC = () => {
       <CardFooter className="p-3 border-t border-gray-100 bg-transparent">
         <div className="w-full p-2 bg-white/70 rounded-xl shadow-inner">
             <Textarea
-              placeholder="Ask anything..."
+              placeholder="Ask Mia anything..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={(e) => {

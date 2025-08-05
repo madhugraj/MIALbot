@@ -1,4 +1,3 @@
-import { MadeWithDyad } from "@/components/made-with-dyad";
 import Chatbot from "@/components/Chatbot";
 
 const Index = () => {
@@ -7,7 +6,6 @@ const Index = () => {
       <div className="flex-grow flex items-center justify-center w-full">
         <Chatbot />
       </div>
-      <MadeWithDyad />
     </div>
   );
 };
