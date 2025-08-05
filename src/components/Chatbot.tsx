@@ -17,7 +17,13 @@ interface Message {
 }
 
 const Chatbot: React.FC = () => {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: 0,
+      text: "Hi there! Welcome to MiAL. How can I assist you today?",
+      sender: "bot",
+    },
+  ]);
   const [input, setInput] = useState<string>("");
   const [isBotTyping, setIsBotTyping] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -88,9 +94,9 @@ const Chatbot: React.FC = () => {
         <div className="flex items-center space-x-3">
           <Avatar className="w-9 h-9">
             <AvatarImage src="https://github.com/shadcn.png" alt="Bot Avatar" />
-            <AvatarFallback>MA</AvatarFallback>
+            <AvatarFallback>M</AvatarFallback>
           </Avatar>
-          <CardTitle className="text-lg font-semibold">Talk to MIAlAssist</CardTitle>
+          <CardTitle className="text-lg font-semibold">Talk to Mia</CardTitle>
         </div>
         <div className="flex space-x-2">
           <Button variant="ghost" size="icon" className="text-white hover:bg-white/20">
@@ -113,7 +119,7 @@ const Chatbot: React.FC = () => {
               {message.sender === "bot" && (
                 <Avatar className="w-8 h-8 mr-2 mt-auto">
                   <AvatarImage src="https://github.com/shadcn.png" alt="Bot Avatar" />
-                  <AvatarFallback>MA</AvatarFallback>
+                  <AvatarFallback>M</AvatarFallback>
                 </Avatar>
               )}
               <div
@@ -131,7 +137,7 @@ const Chatbot: React.FC = () => {
             <div className="mb-3 flex justify-start">
               <Avatar className="w-8 h-8 mr-2 mt-auto">
                 <AvatarImage src="https://github.com/shadcn.png" alt="Bot Avatar" />
-                <AvatarFallback>MA</AvatarFallback>
+                <AvatarFallback>M</AvatarFallback>
               </Avatar>
               <div className="p-3 rounded-xl bg-gray-100 text-gray-800 rounded-bl-sm rounded-tl-xl rounded-tr-xl rounded-br-xl">
                 <span className="animate-pulse">...</span>

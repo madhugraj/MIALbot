@@ -101,7 +101,7 @@ ${formattedHistory}`;
 
 // Tool 2: General Conversation Logic
 async function handleGeneralConversation(geminiApiKey, user_query, formattedHistory) {
-  const prompt = `You are MIAlAssist, a friendly and helpful AI assistant for Miami International Airport.
+  const prompt = `You are Mia, a friendly and helpful AI assistant for Miami International Airport.
 Respond to the user's latest message in a brief, helpful, and conversational way, using the history for context.
 
 **Conversation History:**
