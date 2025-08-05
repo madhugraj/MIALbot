@@ -34,21 +34,8 @@ function formatHistory(history) {
     return history.map(msg => `${msg.sender === 'user' ? 'User' : 'Assistant'}: ${msg.text}`).join('\n');
 }
 
-async function logSummary(supabase: SupabaseClient, userId: string, question: string, answer: string, sql: string | null) {
-  if (!userId) return;
-  const { error } = await supabase.from('summary').insert({
-    user_id: userId,
-    question: question,
-    answer: answer,
-    sql_generated: sql,
-  });
-  if (error) {
-    console.error("Error logging summary:", error);
-  }
-}
-
 // Tool 1: Flight Query Logic
-async function handleFlightQuery(supabase: SupabaseClient, geminiApiKey: string, user_query: string, formattedHistory: string, userId: string | null) {
+async function handleFlightQuery(supabase: SupabaseClient, geminiApiKey: string, user_query: string, formattedHistory: string) {
   console.log("Inside handleFlightQuery");
   
   const parameterExtractionPrompt = `You are an AI assistant that extracts flight query parameters from a user's message.
@@ -133,24 +120,15 @@ ${JSON.stringify(schema_definition, null, 2)}
         suggestions = [];
     }
 
-    if (userId) {
-      const sqlGenerated = `rpc('get_flight_info', ${JSON.stringify(parameters)})`;
-      await logSummary(supabase, userId, user_query, summary, sqlGenerated);
-    }
-
     return { response: summary, suggestions };
   }
 
   const notFoundResponse = `I'm sorry, but I couldn't find any information for that query. Please check the flight details and try again.`;
-  if (userId) {
-    const sqlGenerated = `rpc('get_flight_info', ${JSON.stringify(parameters)})`;
-    await logSummary(supabase, userId, user_query, notFoundResponse, sqlGenerated);
-  }
   return { response: notFoundResponse, suggestions: [] };
 }
 
 // Tool 2: General Conversation Logic
-async function handleGeneralConversation(geminiApiKey: string, user_query: string, formattedHistory: string, supabase: SupabaseClient, userId: string | null) {
+async function handleGeneralConversation(geminiApiKey: string, user_query: string, formattedHistory: string) {
   console.log("Inside handleGeneralConversation");
   const prompt = `You are Mia, a friendly and helpful AI assistant for Miami International Airport.
 Respond to the user's latest message in a brief, helpful, and conversational way, using the history for context.
@@ -161,10 +139,6 @@ ${formattedHistory}
 **Your Response:**`;
   const response = await callGemini(geminiApiKey, prompt);
   
-  if (userId) {
-    await logSummary(supabase, userId, user_query, response, null);
-  }
-
   return { response, suggestions: [] };
 }
 
@@ -179,16 +153,11 @@ serve(async (req) => {
     const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
     if (!geminiApiKey) throw new Error('GEMINI_API_KEY is not set.');
 
-    const authHeader = req.headers.get('Authorization');
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      authHeader ? { global: { headers: { Authorization: authHeader } } } : {}
+      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
     
-    const { data: { user } } = await supabase.auth.getUser();
-    const userId = user?.id || null;
-
     const formattedHistory = formatHistory(history);
 
     const intentClassificationPrompt = `You are a router agent. Your job is to classify the user's latest intent.
@@ -209,10 +178,10 @@ ${formattedHistory}
 
     if (intent.includes('FLIGHT_QUERY')) {
       console.log("Routing to FLIGHT_QUERY tool.");
-      result = await handleFlightQuery(supabase, geminiApiKey, user_query, formattedHistory, userId);
+      result = await handleFlightQuery(supabase, geminiApiKey, user_query, formattedHistory);
     } else {
       console.log("Routing to GENERAL_CONVERSATION tool.");
-      result = await handleGeneralConversation(geminiApiKey, user_query, formattedHistory, supabase, userId);
+      result = await handleGeneralConversation(geminiApiKey, user_query, formattedHistory);
     }
 
     return new Response(JSON.stringify(result), {
