@@ -17,9 +17,10 @@ interface Message {
 }
 
 const Chatbot: React.FC = () => {
+  const messageIdCounter = useRef(0);
   const [messages, setMessages] = useState<Message[]>([
     {
-      id: 0,
+      id: messageIdCounter.current++,
       text: "Hi there! Welcome to MiAL. How can I assist you today?",
       sender: "bot",
     },
@@ -43,13 +44,12 @@ const Chatbot: React.FC = () => {
 
     setContextualSuggestions([]); // Clear suggestions on new message
     const newUserMessage: Message = {
-      id: Date.now(),
+      id: messageIdCounter.current++,
       text,
       sender: "user",
     };
     
-    const updatedMessages = [...messages, newUserMessage];
-    setMessages(updatedMessages);
+    setMessages(prevMessages => [...prevMessages, newUserMessage]);
     setInput("");
     setIsBotTyping(true);
 
@@ -64,14 +64,14 @@ const Chatbot: React.FC = () => {
       if (error) {
         console.error("Error invoking Edge Function:", error);
         const botErrorResponse: Message = {
-          id: Date.now() + 1,
+          id: messageIdCounter.current++,
           text: "Sorry, I couldn't process your request due to an error.",
           sender: "bot",
         };
         setMessages((prevMessages) => [...prevMessages, botErrorResponse]);
       } else {
         const botResponse: Message = {
-          id: Date.now() + 1,
+          id: messageIdCounter.current++,
           text: data.response,
           sender: "bot",
         };
@@ -81,17 +81,17 @@ const Chatbot: React.FC = () => {
         const userQuery = text.toLowerCase();
         if (userQuery.includes('flight') || userQuery.includes('airline')) {
             setContextualSuggestions([
-                "What is its arrival time?",
-                "What is its departure time?",
+                "And its arrival time?",
+                "What about the departure time?",
                 "Which gate is it at?",
-                "What is the flight status?",
+                "And what's the status?",
             ]);
         }
       }
     } catch (fetchError) {
       console.error("Network or unexpected error:", fetchError);
       const botNetworkErrorResponse: Message = {
-        id: Date.now() + 1,
+        id: messageIdCounter.current++,
         text: "It seems there's a problem connecting. Please try again later.",
         sender: "bot",
       };
