@@ -34,96 +34,52 @@ function formatHistory(history) {
     return history.map(msg => `${msg.sender === 'user' ? 'User' : 'Assistant'}: ${msg.text}`).join('\n');
 }
 
-// Tool 1: Flight Query Logic
+// Tool 1: Flight Query Logic (Now with Caching and Performance Logging)
 async function handleFlightQuery(supabase, geminiApiKey, user_query, formattedHistory) {
   console.log("Inside handleFlightQuery");
-  const { data: schemaData, error: schemaError } = await supabase
-    .from('schema_metadata')
-    .select('schema_json')
-    .eq('table_name', 'flight_schedule')
-    .single();
+  
+  console.time("parameter_extraction");
+  const parameterExtractionPrompt = `You are an AI assistant that extracts flight query parameters from a user's message.
+The current date is ${new Date().toDateString()}.
+Based on the conversation history and the user's latest message, extract the following parameters:
+- airline_code (e.g., "BA", "AA")
+- flight_number (e.g., "2490", "123")
+- origin_date (in YYYY-MM-DD format)
 
-  if (schemaError || !schemaData) {
-    console.error('Error fetching schema metadata:', schemaError);
-    return { response: 'Failed to retrieve table schema for flight query.', suggestions: [] };
-  }
+Return a JSON object with the extracted parameters. If a parameter is not found, omit it.
 
-  const schema_definition = schemaData.schema_json.schema || schemaData.schema_json;
-  const sample_data = schemaData.schema_json.sample_data;
-
-  const sample_data_prompt_part = sample_data 
-    ? `\nHere is a sample row from the table to give you context on the data format:\n${JSON.stringify(sample_data, null, 2)}\n` 
-    : '';
-
-  const today = new Date();
-  const year = today.getFullYear();
-  const currentDateForPrompt = today.toDateString();
-
-  const sqlGenerationPrompt = `You are an expert AI assistant that translates user questions into SQL queries for a flight database. Your primary goal is to use the provided conversation history to answer follow-up questions accurately.
-
-The schema for the 'public.flight_schedule' table is:
-${JSON.stringify(schema_definition, null, 2)}
-${sample_data_prompt_part}
 **Conversation History:**
 ${formattedHistory}
+**User's Latest Message:** "${user_query}"
 
-**CRITICAL QUERY GENERATION RULES:**
-1.  **Analyze User Input:**
-    *   Carefully parse the user's latest message to identify an airline code (e.g., "AA", "BA", "DL") and a flight number (e.g., "123", "2490").
-    *   The user might provide only a number, only an airline, or both.
+**JSON Output:**`;
 
-2.  **Use the Correct Columns:**
-    *   The flight identifier is split into two columns: \`airline_code\` and \`flight_number\`.
-    *   You MUST filter on \`airline_code\` for the airline letters and \`flight_number\` for the digits.
-    *   Example: For "flight AA123", the query should be \`... WHERE airline_code ILIKE '%AA%' AND flight_number ILIKE '%123%'\`.
-
-3.  **Handle Dates:**
-    *   If the user provides a date (e.g., "today", "tomorrow", "July 12th"), you MUST filter the query using the \`origin_date_time\` column.
-    *   The current date is **${currentDateForPrompt}**. Use this to resolve relative dates. Assume the current year (${year}) if not specified.
-    *   Use a \`DATE()\` function or cast to date to compare only the date part. For example: \`... WHERE DATE(origin_date_time) = '2024-07-12'\`.
-
-4.  **Handle Ambiguous Queries:**
-    *   If the user only provides a number like "flight 5018", your query should be \`... WHERE flight_number ILIKE '%5018%'\`. This is correct.
-    *   If the user only provides an airline, query by airline.
-
-5.  **Use Context from History:**
-    *   For follow-up questions (e.g., "and the gate?"), you MUST look at the conversation history to find the flight number and airline code from a previous message.
-
-6.  **Select the Right Information:**
-    *   For **departure** times, query \`scheduled_departure_time\` and \`estimated_departure_time\`.
-    *   For **arrival** times, query \`scheduled_arrival_time\` and \`estimated_arrival_time\`.
-    *   For **gate** information, query \`gate_name\`.
-    *   For flight **status** (e.g., "on time", "delayed", "cancelled"), you should primarily query \`operational_status_description\`.
-    *   To provide more detail about **delays**, you should also query \`delay_duration\`. When a user asks "Is the flight on time?" or about delays, including \`delay_duration\` in your SELECT statement will give a more precise answer.
-
-7.  **Safety First:**
-    *   Only generate \`SELECT\` statements.
-    *   If you cannot construct a valid query, return the single word: \`INVALID_QUERY\`.
-
-**Example: On-Time/Delay Question**
-*   History: (empty)
-*   Latest User Question: "Is flight BA2490 on time?"
-*   Your SQL Query: \`SELECT operational_status_description, delay_duration FROM public.flight_schedule WHERE airline_code ILIKE '%BA%' AND flight_number ILIKE '%2490%'\`
-
-**Latest User Question:** "${user_query}"
-**SQL Query:**`;
-
-  const generatedText = await callGemini(geminiApiKey, sqlGenerationPrompt);
-  let sqlQuery = generatedText.replace(/```sql\n|```/g, '').replace(/;/g, '').trim();
-  console.log("Generated SQL:", sqlQuery);
-
-  if (!sqlQuery || sqlQuery.toUpperCase().includes('INVALID_QUERY')) {
-    return { response: "I'm sorry, I can't answer that. Could you please rephrase your question with more details?", suggestions: [] };
+  const parameterText = await callGemini(geminiApiKey, parameterExtractionPrompt);
+  let parameters = {};
+  try {
+    parameters = JSON.parse(parameterText.replace(/```json\n|```/g, '').trim());
+  } catch (e) {
+    console.error("Failed to parse parameters JSON:", parameterText, e);
+    return { response: "I'm sorry, I had trouble understanding the details of your request. Could you please be more specific?", suggestions: [] };
   }
+  console.timeEnd("parameter_extraction");
+  console.log("Extracted Parameters:", parameters);
 
-  const { data, error } = await supabase.rpc('execute_sql_query', { query_text: sqlQuery });
+  console.time("database_query_with_function");
+  const { data, error } = await supabase.rpc('get_flight_info', {
+      p_airline_code: parameters.airline_code,
+      p_flight_number: parameters.flight_number,
+      p_origin_date: parameters.origin_date
+  });
+  console.timeEnd("database_query_with_function");
 
   if (error) {
-    console.error('SQL Execution Error:', error);
-    return { response: `I'm sorry, I ran into a problem trying to find that information. The query I tried to run was invalid. Please try rephrasing your question.`, suggestions: [] };
+    console.error('Database Function Error:', error);
+    return { response: `I'm sorry, I ran into a problem trying to find that information. Please try rephrasing your question.`, suggestions: [] };
   }
 
   if (data && Array.isArray(data) && data.length > 0) {
+    console.time("response_summarization");
     const summarizationPrompt = `You are Mia, a helpful flight assistant. Your task is to provide a clear and direct answer to the user's question based on the database results and conversation history.
 
 **Conversation History:**
@@ -136,6 +92,11 @@ ${JSON.stringify(data, null, 2)}
 **Your Answer:**`;
     
     const summary = await callGemini(geminiApiKey, summarizationPrompt);
+    console.timeEnd("response_summarization");
+
+    console.time("suggestion_generation");
+    const { data: schemaData } = await supabase.from('schema_metadata').select('schema_json').eq('table_name', 'flight_schedule').single();
+    const schema_definition = schemaData ? (schemaData.schema_json.schema || schemaData.schema_json) : 'Not available';
 
     const suggestionGenerationPrompt = `You are an expert AI assistant that generates relevant follow-up questions for a user inquiring about flight information. Your suggestions MUST be answerable using ONLY the provided database schema.
 
@@ -150,7 +111,7 @@ ${JSON.stringify(schema_definition, null, 2)}
 
 **CRITICAL INSTRUCTIONS:**
 1.  **Schema-Bound:** Generate questions that can be answered using the columns in the schema above (e.g., \`gate_name\`, \`terminal_name\`, \`arrival_airport_name\`, \`delay_duration\`).
-2.  **Avoid Unanswerable Questions:** DO NOT suggest questions about topics not covered by the schema, such as "How do I contact the airline?", "Can I change my seat?", or "Where is baggage claim?".
+2.  **Avoid Unanswerable Questions:** DO NOT suggest questions about topics not covered by the schema.
 3.  **Contextual & Relevant:** The questions should be a natural continuation of the conversation and focus on details NOT already provided in "Your Last Answer".
 4.  **Format:** Return a JSON array of 3-4 short, to-the-point questions. Example: \`["What's the arrival time?", "Which gate is it at?"]\`
 5.  **Empty Array on Failure:** If no relevant, answerable suggestions come to mind, return an empty array \`[]\`.
@@ -166,11 +127,12 @@ ${JSON.stringify(schema_definition, null, 2)}
         console.error("Failed to parse suggestions JSON:", suggestionsText, e);
         suggestions = [];
     }
+    console.timeEnd("suggestion_generation");
 
     return { response: summary, suggestions };
   }
 
-  return { response: `I'm sorry, but I couldn't find any information for that query. To help troubleshoot, this is the database query I ran: \`${sqlQuery}\``, suggestions: [] };
+  return { response: `I'm sorry, but I couldn't find any information for that query. Please check the flight details and try again.`, suggestions: [] };
 }
 
 // Tool 2: General Conversation Logic
