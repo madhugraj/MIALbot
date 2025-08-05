@@ -8,7 +8,7 @@ const corsHeaders = {
 
 // Helper to call the Gemini API
 async function callGemini(apiKey, prompt) {
-  const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+  const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
@@ -25,8 +25,15 @@ async function callGemini(apiKey, prompt) {
     return geminiData.candidates[0].content.parts[0].text;
   }
   
+  // Fallback for different structures, if necessary
+  if (geminiData.parts) {
+    return geminiData.parts[0].text;
+  }
+
+  console.error("Unrecognized Gemini response structure:", geminiData);
   throw new Error("Gemini response did not contain expected content structure.");
 }
+
 
 // Helper to format history
 function formatHistory(history) {
@@ -34,51 +41,69 @@ function formatHistory(history) {
     return history.map(msg => `${msg.sender === 'user' ? 'User' : 'Assistant'}: ${msg.text}`).join('\n');
 }
 
-// Tool 1: Flight Query Logic (Now with Caching and Performance Logging)
-async function handleFlightQuery(supabase, geminiApiKey, user_query, formattedHistory) {
-  console.log("Inside handleFlightQuery");
-  
-  console.time("parameter_extraction");
-  const parameterExtractionPrompt = `You are an AI assistant that extracts flight query parameters from a user's message.
-The current date is ${new Date().toDateString()}.
-Based on the conversation history and the user's latest message, extract the following parameters:
-- airline_code (e.g., "BA", "AA")
-- flight_number (e.g., "2490", "123")
-- origin_date (in YYYY-MM-DD format)
+// NEW Tool: Database Query via Text-to-SQL
+async function handleDatabaseQuery(supabase, geminiApiKey, user_query, formattedHistory) {
+  console.log("Inside handleDatabaseQuery (Text-to-SQL)");
 
-Return a JSON object with the extracted parameters. If a parameter is not found, omit it.
+  // 1. Fetch the database schema
+  console.time("schema_fetch");
+  const { data: schemaData, error: schemaError } = await supabase
+    .from('schema_metadata')
+    .select('schema_json')
+    .eq('table_name', 'flight_schedule')
+    .single();
+  console.timeEnd("schema_fetch");
+
+  if (schemaError || !schemaData) {
+    console.error('Schema Fetch Error:', schemaError);
+    return { response: "I'm sorry, I can't access my knowledge base right now. Please try again later.", suggestions: [] };
+  }
+  const schemaDefinition = JSON.stringify(schemaData.schema_json, null, 2);
+
+  // 2. Generate SQL from user query
+  console.time("sql_generation");
+  const sqlGenerationPrompt = `You are an expert PostgreSQL assistant. Your task is to generate a SQL query to answer the user's question based on the provided database schema and conversation history.
+
+**Database Schema for 'flight_schedule' table:**
+${schemaDefinition}
 
 **Conversation History:**
 ${formattedHistory}
-**User's Latest Message:** "${user_query}"
 
-**JSON Output:**`;
+**User's Latest Question:** "${user_query}"
 
-  const parameterText = await callGemini(geminiApiKey, parameterExtractionPrompt);
-  let parameters = {};
-  try {
-    parameters = JSON.parse(parameterText.replace(/```json\n|```/g, '').trim());
-  } catch (e) {
-    console.error("Failed to parse parameters JSON:", parameterText, e);
-    return { response: "I'm sorry, I had trouble understanding the details of your request. Could you please be more specific?", suggestions: [] };
+**CRITICAL INSTRUCTIONS:**
+1.  **Generate a single, valid PostgreSQL query.**
+2.  The current date is ${new Date().toISOString().split('T')[0]}. Use this for queries about "today" or "tonight".
+3.  Use the \`ILIKE\` operator for case-insensitive text matching on columns like \`airline_code\`, \`flight_number\`, \`departure_airport_name\`, and \`arrival_airport_name\`.
+4.  Select columns that are relevant to the user's question. For example, if they ask about a gate, select \`gate_name\`. If they ask about delays, select \`delay_duration\`. If it's a general status query, select key fields like operational_status_description, scheduled_departure_time, scheduled_arrival_time, and gate_name.
+5.  **DO NOT** use markdown (\`\`\`sql\`) or any other text, just the raw SQL query.
+
+**SQL Query:**`;
+
+  const generatedSql = (await callGemini(geminiApiKey, sqlGenerationPrompt)).replace(/```sql\n|```/g, '').trim();
+  console.timeEnd("sql_generation");
+  console.log("Generated SQL:", generatedSql);
+
+  if (!generatedSql || !generatedSql.toUpperCase().startsWith('SELECT')) {
+      console.error("SQL Generation Failed. Response:", generatedSql);
+      return { response: "I'm sorry, I had trouble understanding how to find that information. Could you rephrase your question?", suggestions: [] };
   }
-  console.timeEnd("parameter_extraction");
-  console.log("Extracted Parameters:", parameters);
 
-  console.time("database_query_with_function");
-  const { data, error } = await supabase.rpc('get_flight_info', {
-      p_airline_code: parameters.airline_code,
-      p_flight_number: parameters.flight_number,
-      p_origin_date: parameters.origin_date
+  // 3. Execute the generated SQL
+  console.time("sql_execution");
+  const { data: queryResult, error: queryError } = await supabase.rpc('execute_sql_query', {
+    query_text: generatedSql
   });
-  console.timeEnd("database_query_with_function");
+  console.timeEnd("sql_execution");
 
-  if (error) {
-    console.error('Database Function Error:', error);
-    return { response: `I'm sorry, I ran into a problem trying to find that information. Please try rephrasing your question.`, suggestions: [] };
+  if (queryError) {
+    console.error('SQL Execution Error:', queryError);
+    return { response: `I'm sorry, I ran into a database error. The generated query was: \`${generatedSql}\``, suggestions: [] };
   }
 
-  if (data && Array.isArray(data) && data.length > 0) {
+  // 4. Summarize the result
+  if (queryResult && Array.isArray(queryResult) && queryResult.length > 0) {
     console.time("response_summarization");
     const summarizationPrompt = `You are Mia, a helpful flight assistant. Your task is to provide a clear and direct answer to the user's question based on the database results and conversation history.
 
@@ -87,53 +112,51 @@ ${formattedHistory}
 **User's Latest Question:** "${user_query}"
 **Database Results (JSON):**
 \`\`\`json
-${JSON.stringify(data, null, 2)}
+${JSON.stringify(queryResult, null, 2)}
 \`\`\`
-**Your Answer:**`;
+**Your Answer (be conversational and helpful):**`;
     
     const summary = await callGemini(geminiApiKey, summarizationPrompt);
     console.timeEnd("response_summarization");
 
+    // 5. Generate suggestions
     console.time("suggestion_generation");
-    const { data: schemaData } = await supabase.from('schema_metadata').select('schema_json').eq('table_name', 'flight_schedule').single();
-    const schema_definition = schemaData ? (schemaData.schema_json.schema || schemaData.schema_json) : 'Not available';
-
     const suggestionGenerationPrompt = `You are an expert AI assistant that generates relevant follow-up questions for a user inquiring about flight information. Your suggestions MUST be answerable using ONLY the provided database schema.
 
 **Database Schema for 'flight_schedule' table:**
-${JSON.stringify(schema_definition, null, 2)}
+${schemaDefinition}
 
 **Conversation Context:**
 *   **History:** ${formattedHistory}
 *   **User's Latest Question:** "${user_query}"
 *   **Your Last Answer:** "${summary}"
-*   **Data Used for Answer:** ${JSON.stringify(data, null, 2)}
+*   **Data Used for Answer:** ${JSON.stringify(queryResult, null, 2)}
 
 **CRITICAL INSTRUCTIONS:**
-1.  **Schema-Bound:** Generate questions that can be answered using the columns in the schema above (e.g., \`gate_name\`, \`terminal_name\`, \`arrival_airport_name\`, \`delay_duration\`).
-2.  **Avoid Unanswerable Questions:** DO NOT suggest questions about topics not covered by the schema.
-3.  **Contextual & Relevant:** The questions should be a natural continuation of the conversation and focus on details NOT already provided in "Your Last Answer".
-4.  **Format:** Return a JSON array of 3-4 short, to-the-point questions. Example: \`["What's the arrival time?", "Which gate is it at?"]\`
-5.  **Empty Array on Failure:** If no relevant, answerable suggestions come to mind, return an empty array \`[]\`.
-6.  **No Markdown:** Do not include markdown like \`\`\`json.
+1.  **Schema-Bound:** Generate questions that can be answered using the columns in the schema above.
+2.  **Contextual & Relevant:** The questions should be a natural continuation of the conversation and focus on details NOT already provided in "Your Last Answer".
+3.  **Format:** Return a JSON array of 3-4 short, to-the-point questions. Example: \`["What's the arrival time?", "Which gate is it at?"]\`
+4.  **No Markdown:** Do not include markdown like \`\`\`json.
 
 **Follow-up Suggestions (JSON Array):**`;
 
     const suggestionsText = await callGemini(geminiApiKey, suggestionGenerationPrompt);
     let suggestions = [];
     try {
-        suggestions = JSON.parse(suggestionsText.trim());
+        suggestions = JSON.parse(suggestionsText.replace(/```json\n|```/g, '').trim());
     } catch (e) {
         console.error("Failed to parse suggestions JSON:", suggestionsText, e);
         suggestions = [];
     }
     console.timeEnd("suggestion_generation");
 
-    return { response: summary, suggestions };
+    return { response: summary, suggestions, generatedSql };
   }
 
-  return { response: `I'm sorry, but I couldn't find any information for that query. Please check the flight details and try again.`, suggestions: [] };
+  // Handle no results found
+  return { response: `I couldn't find any information for your query. I used this SQL to check: \`${generatedSql}\`. Please try rephrasing your question.`, suggestions: [] };
 }
+
 
 // Tool 2: General Conversation Logic
 async function handleGeneralConversation(geminiApiKey, user_query, formattedHistory) {
@@ -169,8 +192,8 @@ serve(async (req) => {
 
     const intentClassificationPrompt = `You are a router agent. Your job is to classify the user's latest intent.
 Respond with one of the following tool names:
-- 'FLIGHT_QUERY': If the user is asking about flights, delays, terminals, gates, airlines, or a short follow-up question related to a previous flight query.
-- 'GENERAL_CONVERSATION': If the user is making small talk, greeting, or asking a question not related to flights.
+- 'DATABASE_QUERY': If the user is asking about flights, delays, terminals, gates, airlines, arrival/departure times, or any specific airport information that would be in a database.
+- 'GENERAL_CONVERSATION': If the user is making small talk, greeting, saying thank you, or asking a question not related to specific flight/airport data.
 
 **Conversation History:**
 ${formattedHistory}
@@ -183,9 +206,9 @@ ${formattedHistory}
 
     let result;
 
-    if (intent.includes('FLIGHT_QUERY')) {
-      console.log("Routing to FLIGHT_QUERY tool.");
-      result = await handleFlightQuery(supabase, geminiApiKey, user_query, formattedHistory);
+    if (intent.includes('DATABASE_QUERY')) {
+      console.log("Routing to DATABASE_QUERY tool.");
+      result = await handleDatabaseQuery(supabase, geminiApiKey, user_query, formattedHistory);
     } else {
       console.log("Routing to GENERAL_CONVERSATION tool.");
       result = await handleGeneralConversation(geminiApiKey, user_query, formattedHistory);
