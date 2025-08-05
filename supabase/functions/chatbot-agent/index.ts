@@ -55,6 +55,10 @@ async function handleFlightQuery(supabase, geminiApiKey, user_query, formattedHi
     ? `\nHere is a sample row from the table to give you context on the data format:\n${JSON.stringify(sample_data, null, 2)}\n` 
     : '';
 
+  const today = new Date();
+  const year = today.getFullYear();
+  const currentDateForPrompt = today.toDateString();
+
   const sqlGenerationPrompt = `You are an expert AI assistant that translates user questions into SQL queries for a flight database. Your primary goal is to use the provided conversation history to answer follow-up questions accurately.
 
 The schema for the 'public.flight_schedule' table is:
@@ -73,20 +77,25 @@ ${formattedHistory}
     *   You MUST filter on \`airline_code\` for the airline letters and \`flight_number\` for the digits.
     *   Example: For "flight AA123", the query should be \`... WHERE airline_code ILIKE '%AA%' AND flight_number ILIKE '%123%'\`.
 
-3.  **Handle Ambiguous Queries:**
+3.  **Handle Dates:**
+    *   If the user provides a date (e.g., "today", "tomorrow", "July 12th"), you MUST filter the query using the \`origin_date_time\` column.
+    *   The current date is **${currentDateForPrompt}**. Use this to resolve relative dates. Assume the current year (${year}) if not specified.
+    *   Use a \`DATE()\` function or cast to date to compare only the date part. For example: \`... WHERE DATE(origin_date_time) = '2024-07-12'\`.
+
+4.  **Handle Ambiguous Queries:**
     *   If the user only provides a number like "flight 5018", your query should be \`... WHERE flight_number ILIKE '%5018%'\`. This is correct.
     *   If the user only provides an airline, query by airline.
 
-4.  **Use Context from History:**
+5.  **Use Context from History:**
     *   For follow-up questions (e.g., "and the gate?"), you MUST look at the conversation history to find the flight number and airline code from a previous message.
 
-5.  **Select the Right Information:**
+6.  **Select the Right Information:**
     *   For **departure** times, query \`scheduled_departure_time\` and \`estimated_departure_time\`.
     *   For **arrival** times, query \`scheduled_arrival_time\` and \`estimated_arrival_time\`.
     *   For **gate** information, query \`gate_name\`.
     *   For flight **status**, query \`operational_status_description\`.
 
-6.  **Safety First:**
+7.  **Safety First:**
     *   Only generate \`SELECT\` statements.
     *   If you cannot construct a valid query, return the single word: \`INVALID_QUERY\`.
 
@@ -95,10 +104,10 @@ ${formattedHistory}
 *   Latest User Question: "What is the departure time for flight DL456?"
 *   Your SQL Query: \`SELECT scheduled_departure_time, estimated_departure_time FROM public.flight_schedule WHERE airline_code ILIKE '%DL%' AND flight_number ILIKE '%456%'\`
 
-**Example 2: Number Only**
+**Example 2: Flight with Date**
 *   History: (empty)
-*   Latest User Question: "What is the status of flight 5018?"
-*   Your SQL Query: \`SELECT operational_status_description FROM public.flight_schedule WHERE flight_number ILIKE '%5018%'\`
+*   Latest User Question: "What is the status of flight 237 on 12th july"
+*   Your SQL Query: \`SELECT operational_status_description FROM public.flight_schedule WHERE flight_number ILIKE '%237%' AND DATE(origin_date_time) = '${year}-07-12'\`
 
 **Example 3: Follow-up Question**
 *   History: \`User: What's the status of flight AA123? \\n Assistant: Flight AA123 is on time.\`
