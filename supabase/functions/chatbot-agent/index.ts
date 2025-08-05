@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -34,11 +34,23 @@ function formatHistory(history) {
     return history.map(msg => `${msg.sender === 'user' ? 'User' : 'Assistant'}: ${msg.text}`).join('\n');
 }
 
-// Tool 1: Flight Query Logic (Now with Caching and Performance Logging)
-async function handleFlightQuery(supabase, geminiApiKey, user_query, formattedHistory) {
+async function logSummary(supabase: SupabaseClient, userId: string, question: string, answer: string, sql: string | null) {
+  if (!userId) return;
+  const { error } = await supabase.from('summary').insert({
+    user_id: userId,
+    question: question,
+    answer: answer,
+    sql_generated: sql,
+  });
+  if (error) {
+    console.error("Error logging summary:", error);
+  }
+}
+
+// Tool 1: Flight Query Logic
+async function handleFlightQuery(supabase: SupabaseClient, geminiApiKey: string, user_query: string, formattedHistory: string, userId: string | null) {
   console.log("Inside handleFlightQuery");
   
-  console.time("parameter_extraction");
   const parameterExtractionPrompt = `You are an AI assistant that extracts flight query parameters from a user's message.
 The current date is ${new Date().toDateString()}.
 Based on the conversation history and the user's latest message, extract the following parameters:
@@ -62,16 +74,12 @@ ${formattedHistory}
     console.error("Failed to parse parameters JSON:", parameterText, e);
     return { response: "I'm sorry, I had trouble understanding the details of your request. Could you please be more specific?", suggestions: [] };
   }
-  console.timeEnd("parameter_extraction");
-  console.log("Extracted Parameters:", parameters);
-
-  console.time("database_query_with_function");
+  
   const { data, error } = await supabase.rpc('get_flight_info', {
       p_airline_code: parameters.airline_code,
       p_flight_number: parameters.flight_number,
       p_origin_date: parameters.origin_date
   });
-  console.timeEnd("database_query_with_function");
 
   if (error) {
     console.error('Database Function Error:', error);
@@ -79,7 +87,6 @@ ${formattedHistory}
   }
 
   if (data && Array.isArray(data) && data.length > 0) {
-    console.time("response_summarization");
     const summarizationPrompt = `You are Mia, a helpful flight assistant. Your task is to provide a clear and direct answer to the user's question based on the database results and conversation history.
 
 **Conversation History:**
@@ -92,9 +99,7 @@ ${JSON.stringify(data, null, 2)}
 **Your Answer:**`;
     
     const summary = await callGemini(geminiApiKey, summarizationPrompt);
-    console.timeEnd("response_summarization");
 
-    console.time("suggestion_generation");
     const { data: schemaData } = await supabase.from('schema_metadata').select('schema_json').eq('table_name', 'flight_schedule').single();
     const schema_definition = schemaData ? (schemaData.schema_json.schema || schemaData.schema_json) : 'Not available';
 
@@ -127,16 +132,25 @@ ${JSON.stringify(schema_definition, null, 2)}
         console.error("Failed to parse suggestions JSON:", suggestionsText, e);
         suggestions = [];
     }
-    console.timeEnd("suggestion_generation");
+
+    if (userId) {
+      const sqlGenerated = `rpc('get_flight_info', ${JSON.stringify(parameters)})`;
+      await logSummary(supabase, userId, user_query, summary, sqlGenerated);
+    }
 
     return { response: summary, suggestions };
   }
 
-  return { response: `I'm sorry, but I couldn't find any information for that query. Please check the flight details and try again.`, suggestions: [] };
+  const notFoundResponse = `I'm sorry, but I couldn't find any information for that query. Please check the flight details and try again.`;
+  if (userId) {
+    const sqlGenerated = `rpc('get_flight_info', ${JSON.stringify(parameters)})`;
+    await logSummary(supabase, userId, user_query, notFoundResponse, sqlGenerated);
+  }
+  return { response: notFoundResponse, suggestions: [] };
 }
 
 // Tool 2: General Conversation Logic
-async function handleGeneralConversation(geminiApiKey, user_query, formattedHistory) {
+async function handleGeneralConversation(geminiApiKey: string, user_query: string, formattedHistory: string, supabase: SupabaseClient, userId: string | null) {
   console.log("Inside handleGeneralConversation");
   const prompt = `You are Mia, a friendly and helpful AI assistant for Miami International Airport.
 Respond to the user's latest message in a brief, helpful, and conversational way, using the history for context.
@@ -146,6 +160,11 @@ ${formattedHistory}
 **User's Latest Message:** "${user_query}"
 **Your Response:**`;
   const response = await callGemini(geminiApiKey, prompt);
+  
+  if (userId) {
+    await logSummary(supabase, userId, user_query, response, null);
+  }
+
   return { response, suggestions: [] };
 }
 
@@ -160,11 +179,16 @@ serve(async (req) => {
     const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
     if (!geminiApiKey) throw new Error('GEMINI_API_KEY is not set.');
 
+    const authHeader = req.headers.get('Authorization');
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      authHeader ? { global: { headers: { Authorization: authHeader } } } : {}
     );
     
+    const { data: { user } } = await supabase.auth.getUser();
+    const userId = user?.id || null;
+
     const formattedHistory = formatHistory(history);
 
     const intentClassificationPrompt = `You are a router agent. Your job is to classify the user's latest intent.
@@ -185,10 +209,10 @@ ${formattedHistory}
 
     if (intent.includes('FLIGHT_QUERY')) {
       console.log("Routing to FLIGHT_QUERY tool.");
-      result = await handleFlightQuery(supabase, geminiApiKey, user_query, formattedHistory);
+      result = await handleFlightQuery(supabase, geminiApiKey, user_query, formattedHistory, userId);
     } else {
       console.log("Routing to GENERAL_CONVERSATION tool.");
-      result = await handleGeneralConversation(geminiApiKey, user_query, formattedHistory);
+      result = await handleGeneralConversation(geminiApiKey, user_query, formattedHistory, supabase, userId);
     }
 
     return new Response(JSON.stringify(result), {
