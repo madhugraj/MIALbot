@@ -26,6 +26,7 @@ const Chatbot: React.FC = () => {
   ]);
   const [input, setInput] = useState<string>("");
   const [isBotTyping, setIsBotTyping] = useState<boolean>(false);
+  const [contextualSuggestions, setContextualSuggestions] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -37,12 +38,13 @@ const Chatbot: React.FC = () => {
     scrollToBottom();
   }, [messages, isBotTyping]);
 
-  const handleSendMessage = async () => {
-    if (input.trim() === "") return;
+  const sendMessage = async (text: string) => {
+    if (text.trim() === "") return;
 
+    setContextualSuggestions([]); // Clear suggestions on new message
     const newUserMessage: Message = {
-      id: messages.length + 1,
-      text: input,
+      id: Date.now(),
+      text,
       sender: "user",
     };
     
@@ -52,34 +54,44 @@ const Chatbot: React.FC = () => {
     setIsBotTyping(true);
 
     try {
-      // Pass the latest user query and the conversation history to the agent.
       const { data, error } = await supabase.functions.invoke('chatbot-agent', {
         body: { 
-          user_query: newUserMessage.text,
-          history: messages // Pass previous messages as context
+          user_query: text,
+          history: messages
         },
       });
 
       if (error) {
         console.error("Error invoking Edge Function:", error);
         const botErrorResponse: Message = {
-          id: updatedMessages.length + 1,
+          id: Date.now() + 1,
           text: "Sorry, I couldn't process your request due to an error.",
           sender: "bot",
         };
         setMessages((prevMessages) => [...prevMessages, botErrorResponse]);
       } else {
         const botResponse: Message = {
-          id: updatedMessages.length + 1,
+          id: Date.now() + 1,
           text: data.response,
           sender: "bot",
         };
         setMessages((prevMessages) => [...prevMessages, botResponse]);
+
+        // After a successful response, check if we should show contextual suggestions
+        const userQuery = text.toLowerCase();
+        if (userQuery.includes('flight') || userQuery.includes('airline')) {
+            setContextualSuggestions([
+                "What is its arrival time?",
+                "What is its departure time?",
+                "Which gate is it at?",
+                "What is the flight status?",
+            ]);
+        }
       }
     } catch (fetchError) {
       console.error("Network or unexpected error:", fetchError);
       const botNetworkErrorResponse: Message = {
-        id: updatedMessages.length + 1,
+        id: Date.now() + 1,
         text: "It seems there's a problem connecting. Please try again later.",
         sender: "bot",
       };
@@ -89,10 +101,25 @@ const Chatbot: React.FC = () => {
     }
   };
 
+  const handleSendMessage = () => {
+    sendMessage(input);
+  };
+
   const handleSuggestionClick = (query: string) => {
     setInput(query);
     inputRef.current?.focus();
   };
+
+  const handleContextualSuggestionClick = (query: string) => {
+    sendMessage(query);
+  };
+
+  const initialSuggestions = [
+      { text: "Flight Arrival Time", query: "What is the arrival time for flight " },
+      { text: "Check Flight Status", query: "What is the status of flight " },
+      { text: "Flight Details", query: "What are the details for flight " },
+      { text: "Lost & Found", query: "I have a question about lost and found." },
+  ];
 
   return (
     <Card className="w-full max-w-md mx-auto flex flex-col h-[700px] rounded-2xl shadow-xl bg-white text-card-foreground">
@@ -155,13 +182,25 @@ const Chatbot: React.FC = () => {
       </CardContent>
       <CardFooter className="flex flex-col p-4 border-t bg-white items-start">
         <div className="w-full mb-4">
-            <p className="text-xs text-gray-500 mb-2 font-medium">Or try one of these</p>
-            <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" className="rounded-full" onClick={() => handleSuggestionClick("What is the arrival time for flight ")}>Flight Arrival Time</Button>
-                <Button variant="outline" size="sm" className="rounded-full" onClick={() => handleSuggestionClick("What is the status of flight ")}>Check Flight Status</Button>
-                <Button variant="outline" size="sm" className="rounded-full" onClick={() => handleSuggestionClick("What are the details for flight ")}>Flight Details</Button>
-                <Button variant="outline" size="sm" className="rounded-full" onClick={() => handleSuggestionClick("I have a question about lost and found.")}>Lost & Found</Button>
-            </div>
+            {contextualSuggestions.length > 0 ? (
+                <>
+                    <p className="text-xs text-gray-500 mb-2 font-medium">You could also ask...</p>
+                    <div className="flex flex-wrap gap-2">
+                        {contextualSuggestions.map((suggestion, index) => (
+                            <Button key={index} variant="outline" size="sm" className="rounded-full" onClick={() => handleContextualSuggestionClick(suggestion)}>{suggestion}</Button>
+                        ))}
+                    </div>
+                </>
+            ) : (
+                <>
+                    <p className="text-xs text-gray-500 mb-2 font-medium">Or try one of these</p>
+                    <div className="flex flex-wrap gap-2">
+                        {initialSuggestions.map((suggestion, index) => (
+                            <Button key={index} variant="outline" size="sm" className="rounded-full" onClick={() => handleSuggestionClick(suggestion.query)}>{suggestion.text}</Button>
+                        ))}
+                    </div>
+                </>
+            )}
         </div>
         <div className="flex w-full items-center">
             <Button variant="ghost" size="icon" className="text-gray-500 hover:bg-gray-100 rounded-full mr-1">
