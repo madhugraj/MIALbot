@@ -93,11 +93,17 @@ ${formattedHistory}
     *   For **departure** times, query \`scheduled_departure_time\` and \`estimated_departure_time\`.
     *   For **arrival** times, query \`scheduled_arrival_time\` and \`estimated_arrival_time\`.
     *   For **gate** information, query \`gate_name\`.
-    *   For flight **status**, query \`operational_status_description\`.
+    *   For flight **status** (e.g., "on time", "delayed", "cancelled"), you should primarily query \`operational_status_description\`.
+    *   To provide more detail about **delays**, you should also query \`delay_duration\`. When a user asks "Is the flight on time?" or about delays, including \`delay_duration\` in your SELECT statement will give a more precise answer.
 
 7.  **Safety First:**
     *   Only generate \`SELECT\` statements.
     *   If you cannot construct a valid query, return the single word: \`INVALID_QUERY\`.
+
+**Example: On-Time/Delay Question**
+*   History: (empty)
+*   Latest User Question: "Is flight BA2490 on time?"
+*   Your SQL Query: \`SELECT operational_status_description, delay_duration FROM public.flight_schedule WHERE airline_code ILIKE '%BA%' AND flight_number ILIKE '%2490%'\`
 
 **Latest User Question:** "${user_query}"
 **SQL Query:**`;
