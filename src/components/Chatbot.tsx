@@ -27,6 +27,7 @@ const Chatbot: React.FC = () => {
   const [input, setInput] = useState<string>("");
   const [isBotTyping, setIsBotTyping] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -88,8 +89,13 @@ const Chatbot: React.FC = () => {
     }
   };
 
+  const handleSuggestionClick = (query: string) => {
+    setInput(query);
+    inputRef.current?.focus();
+  };
+
   return (
-    <Card className="w-full max-w-md mx-auto flex flex-col h-[600px] rounded-2xl shadow-xl bg-white text-card-foreground">
+    <Card className="w-full max-w-md mx-auto flex flex-col h-[700px] rounded-2xl shadow-xl bg-white text-card-foreground">
       <CardHeader className="bg-[#6A0DAD] text-white p-4 rounded-t-2xl flex flex-row items-center justify-between">
         <div className="flex items-center space-x-3">
           <Avatar className="w-9 h-9">
@@ -147,28 +153,40 @@ const Chatbot: React.FC = () => {
           <div ref={messagesEndRef} />
         </ScrollArea>
       </CardContent>
-      <CardFooter className="flex p-4 border-t bg-white items-center">
-        <Button variant="ghost" size="icon" className="text-gray-500 hover:bg-gray-100 rounded-full mr-1">
-          <Plus className="h-5 w-5" />
-        </Button>
-        <Input
-          type="text"
-          placeholder="Ask me anything..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyPress={(e) => {
-            if (e.key === "Enter") {
-              handleSendMessage();
-            }
-          }}
-          className="flex-1 mx-2 rounded-full bg-gray-100 border-none focus-visible:ring-0 focus-visible:ring-offset-0 h-10 px-4"
-        />
-        <Button variant="ghost" size="icon" className="text-gray-500 hover:bg-gray-100 rounded-full mr-1">
-          <Mic className="h-5 w-5" />
-        </Button>
-        <Button onClick={handleSendMessage} className="rounded-full w-10 h-10 p-0 flex items-center justify-center bg-[#6A0DAD] hover:bg-[#5A0CA0]">
-          <SendHorizonal className="h-5 w-5 text-white" />
-        </Button>
+      <CardFooter className="flex flex-col p-4 border-t bg-white items-start">
+        <div className="w-full mb-4">
+            <p className="text-xs text-gray-500 mb-2 font-medium">Or try one of these</p>
+            <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" className="rounded-full" onClick={() => handleSuggestionClick("What time is my flight scheduled to depart? ")}>Flight Departure Time</Button>
+                <Button variant="outline" size="sm" className="rounded-full" onClick={() => handleSuggestionClick("What is the status of flight ")}>Check Flight Status</Button>
+                <Button variant="outline" size="sm" className="rounded-full" onClick={() => handleSuggestionClick("Which gate is for flight ")}>Find my Gate</Button>
+                <Button variant="outline" size="sm" className="rounded-full" onClick={() => handleSuggestionClick("I have a question about lost and found.")}>Lost & Found</Button>
+            </div>
+        </div>
+        <div className="flex w-full items-center">
+            <Button variant="ghost" size="icon" className="text-gray-500 hover:bg-gray-100 rounded-full mr-1">
+              <Plus className="h-5 w-5" />
+            </Button>
+            <Input
+              ref={inputRef}
+              type="text"
+              placeholder="Ask me anything..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === "Enter") {
+                  handleSendMessage();
+                }
+              }}
+              className="flex-1 mx-2 rounded-full bg-gray-100 border-none focus-visible:ring-0 focus-visible:ring-offset-0 h-10 px-4"
+            />
+            <Button variant="ghost" size="icon" className="text-gray-500 hover:bg-gray-100 rounded-full mr-1">
+              <Mic className="h-5 w-5" />
+            </Button>
+            <Button onClick={handleSendMessage} className="rounded-full w-10 h-10 p-0 flex items-center justify-center bg-[#6A0DAD] hover:bg-[#5A0CA0]">
+              <SendHorizonal className="h-5 w-5 text-white" />
+            </Button>
+        </div>
       </CardFooter>
     </Card>
   );
