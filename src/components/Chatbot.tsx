@@ -157,9 +157,9 @@ const Chatbot: React.FC = () => {
         <div className="w-full mb-4">
             <p className="text-xs text-gray-500 mb-2 font-medium">Or try one of these</p>
             <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" className="rounded-full" onClick={() => handleSuggestionClick("What is the departure time for flight ")}>Flight Departure Time</Button>
+                <Button variant="outline" size="sm" className="rounded-full" onClick={() => handleSuggestionClick("What is the arrival time for flight ")}>Flight Arrival Time</Button>
                 <Button variant="outline" size="sm" className="rounded-full" onClick={() => handleSuggestionClick("What is the status of flight ")}>Check Flight Status</Button>
-                <Button variant="outline" size="sm" className="rounded-full" onClick={() => handleSuggestionClick("Which gate is for flight ")}>Find my Gate</Button>
+                <Button variant="outline" size="sm" className="rounded-full" onClick={() => handleSuggestionClick("What are the details for flight ")}>Flight Details</Button>
                 <Button variant="outline" size="sm" className="rounded-full" onClick={() => handleSuggestionClick("I have a question about lost and found.")}>Lost & Found</Button>
             </div>
         </div>
