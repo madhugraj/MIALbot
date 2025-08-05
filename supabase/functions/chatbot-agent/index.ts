@@ -47,8 +47,7 @@ async function handleFlightQuery(supabase, geminiApiKey, user_query, formattedHi
     throw new Error('Failed to retrieve table schema for flight query.');
   }
 
-  const sqlGenerationPrompt = `You are an AI agent responsible for answering user questions using data from the \`public.flight_schedule\` table in PostgreSQL.
-You must convert the user's latest message into a safe, read-only SQL SELECT query, using the conversation history for context.
+  const sqlGenerationPrompt = `You are an expert AI assistant that translates user questions into SQL queries for a flight database. Your primary goal is to use the provided conversation history to answer follow-up questions accurately.
 
 The schema for the 'public.flight_schedule' table is:
 ${JSON.stringify(schemaData.schema_json)}
@@ -56,15 +55,17 @@ ${JSON.stringify(schemaData.schema_json)}
 **Conversation History:**
 ${formattedHistory}
 
-**Rules & Guidelines:**
-✔️ Use the conversation history to understand follow-up questions.
-✔️ Only use the table \`public.flight_schedule\`.
-✔️ Never modify, insert, delete, or update data.
-✔️ Prefer selecting these columns: flight_number, airline_name, departure_airport_name, arrival_airport_name, scheduled_departure_time, estimated_departure_time, actual_departure_time, terminal_name, gate_name, operational_status_description.
-✔️ Use fuzzy search with ILIKE for city or airport names (e.g., departure_airport_name ILIKE '%mumbai%').
-✔️ If the user's question implies a date or time, always order the results by scheduled_departure_time in descending order (DESC).
-✔️ If a query is impossible or ambiguous, you MUST return the single word: INVALID_QUERY.
-**Only return SQL — no explanation or commentary.**
+**CRITICAL INSTRUCTIONS:**
+1.  **Prioritize Context:** The user's latest message might be a short follow-up (e.g., "what time?", "and the gate?"). ALWAYS check the conversation history to understand the full context and find the relevant flight number or airport.
+2.  **Infer from History:** Use entities (like flight numbers, dates, or airports) from previous turns to complete the current query.
+3.  **Be Specific:** When a user asks about landing/arrival, use \`actual_arrival_time\` or \`estimated_arrival_time\`. For departure, use \`scheduled_departure_time\` or \`estimated_departure_time\`.
+4.  **Safe Queries Only:** Only generate \`SELECT\` statements. Never \`UPDATE\`, \`DELETE\`, or \`INSERT\`.
+5.  **Invalid Queries:** If you cannot construct a meaningful query from the user's message and the history, return the single word: INVALID_QUERY.
+
+**Example of Handling a Follow-up Question:**
+*   History: \`User: What's the status of flight AA123? \\n Assistant: Flight AA123 is on time, scheduled to arrive at Gate C5.\`
+*   Latest User Question: "and what time does it land?"
+*   Your SQL Query: \`SELECT estimated_arrival_time, actual_arrival_time FROM public.flight_schedule WHERE flight_number ILIKE '%AA123%'\`
 
 **Latest User Question:** "${user_query}"
 **SQL Query:**`;
@@ -73,7 +74,7 @@ ${formattedHistory}
   let sqlQuery = generatedText.replace(/```sql\n|```/g, '').replace(/;/g, '').trim();
 
   if (!sqlQuery || sqlQuery.toUpperCase() === 'INVALID_QUERY') {
-    return "I couldn't generate a SQL query for that request. Please try rephrasing your question or ask about flight schedules, delays, or counts.";
+    return "I'm sorry, I can't answer that. Could you please rephrase your question with more details?";
   }
 
   const { data, error } = await supabase.rpc('execute_sql_query', { query_text: sqlQuery });
@@ -133,7 +134,7 @@ serve(async (req) => {
     // 1. Intent Classification
     const intentClassificationPrompt = `You are a router agent. Your job is to classify the user's latest intent based on the conversation history.
 Respond with one of the following tool names:
-- 'FLIGHT_QUERY': If the user is asking about flights, delays, terminals, gates, airlines, etc.
+- 'FLIGHT_QUERY': If the user is asking about flights, delays, terminals, gates, airlines, or a short follow-up question related to a previous flight query.
 - 'GENERAL_CONVERSATION': If the user is making small talk, greeting, or asking a question not related to flights.
 
 **Conversation History:**
