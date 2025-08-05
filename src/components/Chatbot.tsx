@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { SendHorizonal } from "lucide-react";
+import { SendHorizonal, MessageSquarePlus, X, Plus, Mic } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -13,7 +13,6 @@ interface Message {
   id: number;
   text: string;
   sender: "user" | "bot";
-  isThinking?: boolean;
 }
 
 const Chatbot: React.FC = () => {
@@ -21,15 +20,13 @@ const Chatbot: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: messageIdCounter.current++,
-      text: "Hi there! Welcome to MiAL. How can I assist you today?",
+      text: "Hello! How can I assist you today?",
       sender: "bot",
     },
   ]);
   const [input, setInput] = useState<string>("");
   const [isBotTyping, setIsBotTyping] = useState<boolean>(false);
-  const [contextualSuggestions, setContextualSuggestions] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -42,7 +39,6 @@ const Chatbot: React.FC = () => {
   const sendMessage = async (text: string) => {
     if (text.trim() === "") return;
 
-    setContextualSuggestions([]); // Clear suggestions on new message
     const newUserMessage: Message = {
       id: messageIdCounter.current++,
       text,
@@ -57,7 +53,7 @@ const Chatbot: React.FC = () => {
       const { data, error } = await supabase.functions.invoke('chatbot-agent', {
         body: { 
           user_query: text,
-          history: messages
+          history: messages.map(m => ({ text: m.text, sender: m.sender }))
         },
       });
 
@@ -76,10 +72,6 @@ const Chatbot: React.FC = () => {
           sender: "bot",
         };
         setMessages((prevMessages) => [...prevMessages, botResponse]);
-
-        if (data.suggestions && Array.isArray(data.suggestions)) {
-          setContextualSuggestions(data.suggestions);
-        }
       }
     } catch (fetchError) {
       console.error("Network or unexpected error:", fetchError);
@@ -98,54 +90,44 @@ const Chatbot: React.FC = () => {
     sendMessage(input);
   };
 
-  const handleSuggestionClick = (query: string) => {
-    setInput(query);
-    inputRef.current?.focus();
-  };
-
-  const handleContextualSuggestionClick = (query: string) => {
-    sendMessage(query);
-  };
-
-  const initialSuggestions = [
-      { text: "Flight Arrival Time", query: "What is the arrival time for flight " },
-      { text: "Check Flight Status", query: "What is the status of flight " },
-      { text: "Flight Details", query: "What are the details for flight " },
-      { text: "Lost & Found", query: "I have a question about lost and found." },
-  ];
-
   return (
-    <Card className="w-full max-w-lg mx-auto flex flex-col h-[700px] rounded-xl shadow-lg bg-white text-slate-800 font-sans">
-      <CardHeader className="bg-slate-900 text-white p-4 rounded-t-xl flex flex-row items-center justify-between">
+    <Card className="w-full max-w-md mx-auto flex flex-col h-[700px] rounded-2xl shadow-2xl bg-white/80 backdrop-blur-sm border-0 overflow-hidden">
+      <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-purple-500 to-indigo-600"></div>
+      <CardHeader className="pt-6 pb-4 flex flex-row items-center justify-between bg-transparent">
         <div className="flex items-center space-x-3">
-          <Avatar className="w-10 h-10 border-2 border-slate-500">
-            <AvatarImage src="https://github.com/shadcn.png" alt="Bot Avatar" />
-            <AvatarFallback>M</AvatarFallback>
+          <Avatar className="w-10 h-10 ring-2 ring-purple-400 ring-offset-2 ring-offset-white">
+            <AvatarImage src="https://i.pravatar.cc/150?u=a042581f4e29026704d" alt="Bot Avatar" />
+            <AvatarFallback>A</AvatarFallback>
           </Avatar>
-          <CardTitle className="text-lg font-semibold">Mia</CardTitle>
+          <CardTitle className="text-lg font-semibold text-gray-800">Talk to Ari</CardTitle>
+        </div>
+        <div className="flex items-center space-x-4">
+            <MessageSquarePlus className="w-5 h-5 text-gray-500 cursor-pointer hover:text-gray-800" />
+            <X className="w-5 h-5 text-gray-500 cursor-pointer hover:text-gray-800" />
         </div>
       </CardHeader>
-      <CardContent className="flex-1 overflow-hidden p-0 bg-white">
+      
+      <CardContent className="flex-1 overflow-hidden p-0">
         <ScrollArea className="h-full p-6">
           <div className="flex flex-col space-y-4">
             {messages.map((message) => (
               <div
                 key={message.id}
-                className={`flex items-end gap-2 ${
+                className={`flex items-end gap-2.5 ${
                   message.sender === "user" ? "justify-end" : "justify-start"
                 }`}
               >
                 {message.sender === "bot" && (
                   <Avatar className="w-8 h-8">
-                    <AvatarImage src="https://github.com/shadcn.png" alt="Bot Avatar" />
-                    <AvatarFallback>M</AvatarFallback>
+                    <AvatarImage src="https://i.pravatar.cc/150?u=a042581f4e29026704d" alt="Bot Avatar" />
+                    <AvatarFallback>A</AvatarFallback>
                   </Avatar>
                 )}
                 <div
-                  className={`p-3 rounded-lg max-w-[75%] text-sm ${
+                  className={`p-3 px-4 rounded-2xl max-w-[75%] text-sm font-medium shadow-sm ${
                     message.sender === "user"
-                      ? "bg-slate-900 text-white rounded-br-none"
-                      : "bg-slate-100 text-slate-900 rounded-bl-none"
+                      ? "bg-violet-100 text-gray-900 rounded-br-lg"
+                      : "bg-white text-gray-800 rounded-bl-lg"
                   }`}
                 >
                   {message.text}
@@ -153,16 +135,16 @@ const Chatbot: React.FC = () => {
               </div>
             ))}
             {isBotTyping && (
-              <div className="flex items-end gap-2 justify-start">
+              <div className="flex items-end gap-2.5 justify-start">
                 <Avatar className="w-8 h-8">
-                  <AvatarImage src="https://github.com/shadcn.png" alt="Bot Avatar" />
-                  <AvatarFallback>M</AvatarFallback>
+                  <AvatarImage src="https://i.pravatar.cc/150?u=a042581f4e29026704d" alt="Bot Avatar" />
+                  <AvatarFallback>A</AvatarFallback>
                 </Avatar>
-                <div className="p-3 rounded-lg bg-slate-100 text-slate-900 rounded-bl-none">
-                  <div className="flex items-center justify-center space-x-1">
-                    <span className="h-1.5 w-1.5 bg-slate-400 rounded-full animate-pulse [animation-delay:-0.3s]"></span>
-                    <span className="h-1.5 w-1.5 bg-slate-400 rounded-full animate-pulse [animation-delay:-0.15s]"></span>
-                    <span className="h-1.5 w-1.5 bg-slate-400 rounded-full animate-pulse"></span>
+                <div className="p-3 px-4 rounded-2xl bg-white text-gray-800 rounded-bl-lg shadow-sm">
+                  <div className="flex items-center justify-center space-x-1.5">
+                    <span className="h-2 w-2 bg-gray-300 rounded-full animate-pulse [animation-delay:-0.3s]"></span>
+                    <span className="h-2 w-2 bg-gray-300 rounded-full animate-pulse [animation-delay:-0.15s]"></span>
+                    <span className="h-2 w-2 bg-gray-300 rounded-full animate-pulse"></span>
                   </div>
                 </div>
               </div>
@@ -171,41 +153,35 @@ const Chatbot: React.FC = () => {
           </div>
         </ScrollArea>
       </CardContent>
-      <CardFooter className="flex flex-col p-4 pt-2 border-t bg-white items-start rounded-b-xl">
-        <div className="w-full mb-3">
-            {contextualSuggestions.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                    {contextualSuggestions.map((suggestion, index) => (
-                        <Button key={index} variant="outline" size="sm" className="rounded-full border-slate-200 bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900" onClick={() => handleContextualSuggestionClick(suggestion)}>{suggestion}</Button>
-                    ))}
-                </div>
-            ) : (
-                messages.length <= 2 && (
-                    <div className="flex flex-wrap gap-2">
-                        {initialSuggestions.map((suggestion, index) => (
-                            <Button key={index} variant="outline" size="sm" className="rounded-full border-slate-200 bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900" onClick={() => handleSuggestionClick(suggestion.query)}>{suggestion.text}</Button>
-                        ))}
-                    </div>
-                )
-            )}
-        </div>
-        <div className="flex w-full items-center space-x-2">
-            <Input
-              ref={inputRef}
-              type="text"
-              placeholder="Ask Mia anything..."
+
+      <CardFooter className="p-3 border-t border-gray-100 bg-transparent">
+        <div className="w-full p-2 bg-white/70 rounded-xl shadow-inner">
+            <Textarea
+              placeholder="Ask anything..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={(e) => {
-                if (e.key === "Enter") {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
                   handleSendMessage();
                 }
               }}
-              className="flex-1 bg-slate-100 border-transparent rounded-lg focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-500 h-10 px-4"
+              className="w-full bg-transparent border-0 resize-none p-2 focus-visible:ring-0 focus-visible:ring-offset-0"
+              rows={1}
             />
-            <Button onClick={handleSendMessage} className="rounded-lg w-10 h-10 p-0 flex items-center justify-center bg-slate-900 hover:bg-slate-700 transition-colors">
-              <SendHorizonal className="h-5 w-5 text-white" />
-            </Button>
+            <div className="flex justify-between items-center mt-1">
+                <div className="flex items-center space-x-1">
+                    <Button variant="ghost" size="icon" className="rounded-full w-9 h-9 text-gray-500 hover:bg-gray-200 hover:text-gray-800">
+                        <Plus className="w-5 h-5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="rounded-full w-9 h-9 text-gray-500 hover:bg-gray-200 hover:text-gray-800">
+                        <Mic className="w-5 h-5" />
+                    </Button>
+                </div>
+                <Button onClick={handleSendMessage} size="icon" className="rounded-full w-10 h-10 p-0 flex items-center justify-center bg-purple-600 hover:bg-purple-700 transition-colors text-white">
+                    <SendHorizonal className="h-5 w-5" />
+                </Button>
+            </div>
         </div>
       </CardFooter>
     </Card>
