@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { SendHorizonal, Plus, Mic, Edit, X } from "lucide-react";
+import { SendHorizonal } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -115,96 +115,85 @@ const Chatbot: React.FC = () => {
   ];
 
   return (
-    <Card className="w-full max-w-md mx-auto flex flex-col h-[700px] rounded-2xl shadow-xl bg-white text-card-foreground">
-      <CardHeader className="bg-[#6A0DAD] text-white p-4 rounded-t-2xl flex flex-row items-center justify-between">
+    <Card className="w-full max-w-lg mx-auto flex flex-col h-[700px] rounded-xl shadow-lg bg-white text-slate-800 font-sans">
+      <CardHeader className="bg-slate-900 text-white p-4 rounded-t-xl flex flex-row items-center justify-between">
         <div className="flex items-center space-x-3">
-          <Avatar className="w-9 h-9">
+          <Avatar className="w-10 h-10 border-2 border-slate-500">
             <AvatarImage src="https://github.com/shadcn.png" alt="Bot Avatar" />
             <AvatarFallback>M</AvatarFallback>
           </Avatar>
-          <CardTitle className="text-lg font-semibold">Talk to Mia</CardTitle>
-        </div>
-        <div className="flex space-x-2">
-          <Button variant="ghost" size="icon" className="text-white hover:bg-white/20">
-            <Edit className="h-5 w-5" />
-          </Button>
-          <Button variant="ghost" size="icon" className="text-white hover:bg-white/20">
-            <X className="h-5 w-5" />
-          </Button>
+          <CardTitle className="text-lg font-semibold">Mia</CardTitle>
         </div>
       </CardHeader>
-      <CardContent className="flex-1 overflow-hidden p-0 bg-gray-50">
-        <ScrollArea className="h-full p-4">
-          {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`mb-3 flex ${
-                message.sender === "user" ? "justify-end" : "justify-start"
-              }`}
-            >
-              {message.sender === "bot" && (
-                <Avatar className="w-8 h-8 mr-2 mt-auto">
+      <CardContent className="flex-1 overflow-hidden p-0 bg-white">
+        <ScrollArea className="h-full p-6">
+          <div className="flex flex-col space-y-4">
+            {messages.map((message) => (
+              <div
+                key={message.id}
+                className={`flex items-end gap-2 ${
+                  message.sender === "user" ? "justify-end" : "justify-start"
+                }`}
+              >
+                {message.sender === "bot" && (
+                  <Avatar className="w-8 h-8">
+                    <AvatarImage src="https://github.com/shadcn.png" alt="Bot Avatar" />
+                    <AvatarFallback>M</AvatarFallback>
+                  </Avatar>
+                )}
+                <div
+                  className={`p-3 rounded-lg max-w-[75%] text-sm ${
+                    message.sender === "user"
+                      ? "bg-slate-900 text-white rounded-br-none"
+                      : "bg-slate-100 text-slate-900 rounded-bl-none"
+                  }`}
+                >
+                  {message.text}
+                </div>
+              </div>
+            ))}
+            {isBotTyping && (
+              <div className="flex items-end gap-2 justify-start">
+                <Avatar className="w-8 h-8">
                   <AvatarImage src="https://github.com/shadcn.png" alt="Bot Avatar" />
                   <AvatarFallback>M</AvatarFallback>
                 </Avatar>
-              )}
-              <div
-                className={`p-3 rounded-xl max-w-[75%] ${
-                  message.sender === "user"
-                    ? "bg-[#6A0DAD] text-white rounded-br-sm rounded-tl-xl rounded-tr-xl rounded-bl-xl"
-                    : "bg-gray-100 text-gray-800 rounded-bl-sm rounded-tl-xl rounded-tr-xl rounded-br-xl"
-                }`}
-              >
-                {message.text}
+                <div className="p-3 rounded-lg bg-slate-100 text-slate-900 rounded-bl-none">
+                  <div className="flex items-center justify-center space-x-1">
+                    <span className="h-1.5 w-1.5 bg-slate-400 rounded-full animate-pulse [animation-delay:-0.3s]"></span>
+                    <span className="h-1.5 w-1.5 bg-slate-400 rounded-full animate-pulse [animation-delay:-0.15s]"></span>
+                    <span className="h-1.5 w-1.5 bg-slate-400 rounded-full animate-pulse"></span>
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
-          {isBotTyping && (
-            <div className="mb-3 flex justify-start">
-              <Avatar className="w-8 h-8 mr-2 mt-auto">
-                <AvatarImage src="https://github.com/shadcn.png" alt="Bot Avatar" />
-                <AvatarFallback>M</AvatarFallback>
-              </Avatar>
-              <div className="p-3 rounded-xl bg-gray-100 text-gray-800 rounded-bl-sm rounded-tl-xl rounded-tr-xl rounded-br-xl">
-                <span className="animate-pulse">...</span>
-              </div>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
+            )}
+            <div ref={messagesEndRef} />
+          </div>
         </ScrollArea>
       </CardContent>
-      <CardFooter className="flex flex-col p-4 border-t bg-white items-start">
-        <div className="w-full mb-4">
+      <CardFooter className="flex flex-col p-4 pt-2 border-t bg-white items-start rounded-b-xl">
+        <div className="w-full mb-3">
             {contextualSuggestions.length > 0 ? (
-                <>
-                    <p className="text-xs text-gray-500 mb-2 font-medium">You could also ask...</p>
-                    <div className="flex flex-wrap gap-2">
-                        {contextualSuggestions.map((suggestion, index) => (
-                            <Button key={index} variant="outline" size="sm" className="rounded-full" onClick={() => handleContextualSuggestionClick(suggestion)}>{suggestion}</Button>
-                        ))}
-                    </div>
-                </>
+                <div className="flex flex-wrap gap-2">
+                    {contextualSuggestions.map((suggestion, index) => (
+                        <Button key={index} variant="outline" size="sm" className="rounded-full border-slate-200 bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900" onClick={() => handleContextualSuggestionClick(suggestion)}>{suggestion}</Button>
+                    ))}
+                </div>
             ) : (
                 messages.length <= 2 && (
-                    <>
-                        <p className="text-xs text-gray-500 mb-2 font-medium">Or try one of these</p>
-                        <div className="flex flex-wrap gap-2">
-                            {initialSuggestions.map((suggestion, index) => (
-                                <Button key={index} variant="outline" size="sm" className="rounded-full" onClick={() => handleSuggestionClick(suggestion.query)}>{suggestion.text}</Button>
-                            ))}
-                        </div>
-                    </>
+                    <div className="flex flex-wrap gap-2">
+                        {initialSuggestions.map((suggestion, index) => (
+                            <Button key={index} variant="outline" size="sm" className="rounded-full border-slate-200 bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900" onClick={() => handleSuggestionClick(suggestion.query)}>{suggestion.text}</Button>
+                        ))}
+                    </div>
                 )
             )}
         </div>
-        <div className="flex w-full items-center">
-            <Button variant="ghost" size="icon" className="text-gray-500 hover:bg-gray-100 rounded-full mr-1">
-              <Plus className="h-5 w-5" />
-            </Button>
+        <div className="flex w-full items-center space-x-2">
             <Input
               ref={inputRef}
               type="text"
-              placeholder="Ask me anything..."
+              placeholder="Ask Mia anything..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={(e) => {
@@ -212,12 +201,9 @@ const Chatbot: React.FC = () => {
                   handleSendMessage();
                 }
               }}
-              className="flex-1 mx-2 rounded-full bg-gray-100 border-none focus-visible:ring-0 focus-visible:ring-offset-0 h-10 px-4"
+              className="flex-1 bg-slate-100 border-transparent rounded-lg focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-500 h-10 px-4"
             />
-            <Button variant="ghost" size="icon" className="text-gray-500 hover:bg-gray-100 rounded-full mr-1">
-              <Mic className="h-5 w-5" />
-            </Button>
-            <Button onClick={handleSendMessage} className="rounded-full w-10 h-10 p-0 flex items-center justify-center bg-[#6A0DAD] hover:bg-[#5A0CA0]">
+            <Button onClick={handleSendMessage} className="rounded-lg w-10 h-10 p-0 flex items-center justify-center bg-slate-900 hover:bg-slate-700 transition-colors">
               <SendHorizonal className="h-5 w-5 text-white" />
             </Button>
         </div>
