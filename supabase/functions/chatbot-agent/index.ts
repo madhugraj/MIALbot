@@ -188,7 +188,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
     
-    const formattedHistory = format_history(history);
+    const formattedHistory = formatHistory(history);
 
     // 1. Intent Classification
     const intentClassificationPrompt = `You are a router agent. Your job is to classify the user's latest intent based on the.
