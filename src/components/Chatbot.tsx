@@ -77,15 +77,8 @@ const Chatbot: React.FC = () => {
         };
         setMessages((prevMessages) => [...prevMessages, botResponse]);
 
-        // After a successful response, check if we should show contextual suggestions
-        const userQuery = text.toLowerCase();
-        if (userQuery.includes('flight') || userQuery.includes('airline')) {
-            setContextualSuggestions([
-                "And its arrival time?",
-                "What about the departure time?",
-                "Which gate is it at?",
-                "And what's the status?",
-            ]);
+        if (data.suggestions && Array.isArray(data.suggestions)) {
+          setContextualSuggestions(data.suggestions);
         }
       }
     } catch (fetchError) {
@@ -192,14 +185,16 @@ const Chatbot: React.FC = () => {
                     </div>
                 </>
             ) : (
-                <>
-                    <p className="text-xs text-gray-500 mb-2 font-medium">Or try one of these</p>
-                    <div className="flex flex-wrap gap-2">
-                        {initialSuggestions.map((suggestion, index) => (
-                            <Button key={index} variant="outline" size="sm" className="rounded-full" onClick={() => handleSuggestionClick(suggestion.query)}>{suggestion.text}</Button>
-                        ))}
-                    </div>
-                </>
+                messages.length <= 2 && (
+                    <>
+                        <p className="text-xs text-gray-500 mb-2 font-medium">Or try one of these</p>
+                        <div className="flex flex-wrap gap-2">
+                            {initialSuggestions.map((suggestion, index) => (
+                                <Button key={index} variant="outline" size="sm" className="rounded-full" onClick={() => handleSuggestionClick(suggestion.query)}>{suggestion.text}</Button>
+                            ))}
+                        </div>
+                    </>
+                )
             )}
         </div>
         <div className="flex w-full items-center">

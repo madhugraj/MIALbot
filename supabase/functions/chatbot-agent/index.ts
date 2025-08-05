@@ -45,7 +45,7 @@ async function handleFlightQuery(supabase, geminiApiKey, user_query, formattedHi
 
   if (schemaError || !schemaData) {
     console.error('Error fetching schema metadata:', schemaError);
-    throw new Error('Failed to retrieve table schema for flight query.');
+    return { response: 'Failed to retrieve table schema for flight query.', suggestions: [] };
   }
 
   const schema_definition = schemaData.schema_json.schema || schemaData.schema_json;
@@ -99,71 +99,71 @@ ${formattedHistory}
     *   Only generate \`SELECT\` statements.
     *   If you cannot construct a valid query, return the single word: \`INVALID_QUERY\`.
 
-**Example 1: Full Flight ID**
-*   History: (empty)
-*   Latest User Question: "What is the departure time for flight DL456?"
-*   Your SQL Query: \`SELECT scheduled_departure_time, estimated_departure_time FROM public.flight_schedule WHERE airline_code ILIKE '%DL%' AND flight_number ILIKE '%456%'\`
-
-**Example 2: Flight with Date**
-*   History: (empty)
-*   Latest User Question: "What is the status of flight 237 on 12th july"
-*   Your SQL Query: \`SELECT operational_status_description FROM public.flight_schedule WHERE flight_number ILIKE '%237%' AND DATE(origin_date_time) = '${year}-07-12'\`
-
-**Example 3: Follow-up Question**
-*   History: \`User: What's the status of flight AA123? \\n Assistant: Flight AA123 is on time.\`
-*   Latest User Question: "and what time does it land?"
-*   Your SQL Query: \`SELECT scheduled_arrival_time, estimated_arrival_time FROM public.flight_schedule WHERE airline_code ILIKE '%AA%' AND flight_number ILIKE '%123%'\`
-
 **Latest User Question:** "${user_query}"
 **SQL Query:**`;
 
-  console.log("Generating SQL query...");
   const generatedText = await callGemini(geminiApiKey, sqlGenerationPrompt);
   let sqlQuery = generatedText.replace(/```sql\n|```/g, '').replace(/;/g, '').trim();
   console.log("Generated SQL:", sqlQuery);
 
   if (!sqlQuery || sqlQuery.toUpperCase().includes('INVALID_QUERY')) {
-    console.log("Generated query was invalid or empty.");
-    return "I'm sorry, I can't answer that. Could you please rephrase your question with more details?";
+    return { response: "I'm sorry, I can't answer that. Could you please rephrase your question with more details?", suggestions: [] };
   }
 
-  console.log("Executing SQL query...");
   const { data, error } = await supabase.rpc('execute_sql_query', { query_text: sqlQuery });
 
   if (error) {
     console.error('SQL Execution Error:', error);
-    return `I'm sorry, I ran into a problem trying to find that information. The query I tried to run was invalid. Please try rephrasing your question.`;
+    return { response: `I'm sorry, I ran into a problem trying to find that information. The query I tried to run was invalid. Please try rephrasing your question.`, suggestions: [] };
   }
-
-  console.log("SQL query successful. Data:", data);
 
   if (data && Array.isArray(data) && data.length > 0) {
     const summarizationPrompt = `You are Mia, a helpful flight assistant. Your task is to provide a clear and direct answer to the user's question based on the database results and conversation history.
 
 **Conversation History:**
 ${formattedHistory}
-
 **User's Latest Question:** "${user_query}"
-
 **Database Results (JSON):**
 \`\`\`json
 ${JSON.stringify(data, null, 2)}
 \`\`\`
+**Your Answer:**`;
+    
+    const summary = await callGemini(geminiApiKey, summarizationPrompt);
+
+    const suggestionGenerationPrompt = `You are a helpful AI assistant. Based on the user's last question and the information you just provided, generate 3-4 short, relevant follow-up questions the user might ask next.
+
+**Conversation History:**
+${formattedHistory}
+**User's Latest Question:** "${user_query}"
+**Your Last Answer:**
+"${summary}"
+**Database Results (for context):**
+${JSON.stringify(data, null, 2)}
 
 **CRITICAL INSTRUCTIONS:**
-1.  **Directly Answer the Question:** Use the "Database Results" to directly answer the "User's Latest Question".
-2.  **Use Context:** Refer to the "Conversation History" to understand the full context, especially for follow-up questions.
-3.  **Be Concise:** Provide a short, natural language response. Do not just repeat the JSON data.
-4.  **Handle No Data:** If the database results are empty, state that you couldn't find the information.
-5.  **Example:** If the user asked "what time does it land?" and the data is \`[{"actual_arrival_time": "2024-08-20T14:30:00"}]\`, a good response is "The flight landed at 2:30 PM."
+1.  Generate questions that are natural continuations of the conversation.
+2.  Focus on details that were NOT in your last answer. For example, if you just gave the status, suggest asking about the gate, arrival time, or baggage claim.
+3.  Keep the questions short and to the point.
+4.  Return the suggestions as a JSON array of strings. Example: \`["What's the arrival time?", "Which gate is it at?", "Is it delayed?"]\`
+5.  If no relevant suggestions come to mind, return an empty array \`[]\`.
+6.  Do not include markdown like \`\`\`json.
 
-**Your Answer:**`;
-    console.log("Summarizing result...");
-    return await callGemini(geminiApiKey, summarizationPrompt);
+**Follow-up Suggestions (JSON Array):**`;
+
+    const suggestionsText = await callGemini(geminiApiKey, suggestionGenerationPrompt);
+    let suggestions = [];
+    try {
+        suggestions = JSON.parse(suggestionsText.trim());
+    } catch (e) {
+        console.error("Failed to parse suggestions JSON:", suggestionsText, e);
+        suggestions = [];
+    }
+
+    return { response: summary, suggestions };
   }
 
-  console.log("No data found for the query.");
-  return `I'm sorry, but I couldn't find any information for that query. To help troubleshoot, this is the database query I ran: \`${sqlQuery}\``;
+  return { response: `I'm sorry, but I couldn't find any information for that query. To help troubleshoot, this is the database query I ran: \`${sqlQuery}\``, suggestions: [] };
 }
 
 // Tool 2: General Conversation Logic
@@ -174,11 +174,10 @@ Respond to the user's latest message in a brief, helpful, and conversational way
 
 **Conversation History:**
 ${formattedHistory}
-
 **User's Latest Message:** "${user_query}"
-
 **Your Response:**`;
-  return await callGemini(geminiApiKey, prompt);
+  const response = await callGemini(geminiApiKey, prompt);
+  return { response, suggestions: [] };
 }
 
 // Main Server Logic (The Agent/Router)
@@ -199,38 +198,31 @@ serve(async (req) => {
     
     const formattedHistory = formatHistory(history);
 
-    // 1. Intent Classification
-    const intentClassificationPrompt = `You are a router agent. Your job is to classify the user's latest intent based on the.
+    const intentClassificationPrompt = `You are a router agent. Your job is to classify the user's latest intent.
 Respond with one of the following tool names:
 - 'FLIGHT_QUERY': If the user is asking about flights, delays, terminals, gates, airlines, or a short follow-up question related to a previous flight query.
 - 'GENERAL_CONVERSATION': If the user is making small talk, greeting, or asking a question not related to flights.
 
 **Conversation History:**
 ${formattedHistory}
-
 **User's Latest Message:** "${user_query}"
 **Tool:**`;
 
     const rawIntent = await callGemini(geminiApiKey, intentClassificationPrompt);
-    const intent = rawIntent.trim().toUpperCase().replace(/['".]/g, ""); // Clean and normalize
-    console.log("Raw Intent from Model:", rawIntent);
+    const intent = rawIntent.trim().toUpperCase().replace(/['".]/g, "");
     console.log("Cleaned Intent:", intent);
 
-    let response;
+    let result;
 
-    // 2. Tool Routing
     if (intent.includes('FLIGHT_QUERY')) {
       console.log("Routing to FLIGHT_QUERY tool.");
-      response = await handleFlightQuery(supabase, geminiApiKey, user_query, formattedHistory);
-    } else if (intent.includes('GENERAL_CONVERSATION')) {
-      console.log("Routing to GENERAL_CONVERSATION tool.");
-      response = await handleGeneralConversation(geminiApiKey, user_query, formattedHistory);
+      result = await handleFlightQuery(supabase, geminiApiKey, user_query, formattedHistory);
     } else {
-      console.log(`Fallback: Could not classify intent '${intent}'. Trying general conversation.`);
-      response = await handleGeneralConversation(geminiApiKey, user_query, formattedHistory);
+      console.log("Routing to GENERAL_CONVERSATION tool.");
+      result = await handleGeneralConversation(geminiApiKey, user_query, formattedHistory);
     }
 
-    return new Response(JSON.stringify({ response }), {
+    return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
     });
