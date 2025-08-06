@@ -24,7 +24,13 @@ const formSchema = z.object({
   airlineCode: z.string().optional(),
   flightNumber: z.string().optional(),
   date: z.date().optional(),
-});
+}).refine(
+  (data) => !!data.airlineCode || !!data.flightNumber || !!data.date,
+  {
+    message: "Please fill at least one search field to begin.",
+    path: ["airlineCode"], // Shows the error message under the first field for simplicity
+  }
+);
 
 export type FlightSearchFormValues = z.infer<typeof formSchema>;
 
@@ -55,9 +61,9 @@ export function FlightSearchForm({ onSearch, isSearching }: FlightSearchFormProp
             name="airlineCode"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Airline (e.g., BA, AA)</FormLabel>
+                <FormLabel>Airline Code (Optional)</FormLabel>
                 <FormControl>
-                  <Input placeholder="Airline Code" {...field} />
+                  <Input placeholder="e.g., BA, AA" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -68,9 +74,9 @@ export function FlightSearchForm({ onSearch, isSearching }: FlightSearchFormProp
             name="flightNumber"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Flight Number (e.g., 209)</FormLabel>
+                <FormLabel>Flight Number (Optional)</FormLabel>
                 <FormControl>
-                  <Input placeholder="Flight Number" {...field} />
+                  <Input placeholder="e.g., 209" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -82,7 +88,7 @@ export function FlightSearchForm({ onSearch, isSearching }: FlightSearchFormProp
           name="date"
           render={({ field }) => (
             <FormItem className="flex flex-col">
-              <FormLabel>Date of Departure</FormLabel>
+              <FormLabel>Date of Departure (Optional)</FormLabel>
               <Popover>
                 <PopoverTrigger asChild>
                   <FormControl>

@@ -44,7 +44,6 @@ function formatHistory(history) {
 async function handleDatabaseQuery(supabase, geminiApiKey, user_query, formattedHistory) {
   console.log("Inside handleDatabaseQuery (Text-to-SQL)");
 
-  // 1. Fetch the database schema
   const { data: schemaData, error: schemaError } = await supabase
     .from('schema_metadata')
     .select('schema_json')
@@ -57,35 +56,39 @@ async function handleDatabaseQuery(supabase, geminiApiKey, user_query, formatted
   }
   const schemaDefinition = JSON.stringify(schemaData.schema_json, null, 2);
 
-  // 2. Generate SQL from user query
-  const sqlGenerationPrompt = `You are an expert PostgreSQL assistant. Your task is to generate a SQL query to answer the user's question based on the provided database schema and conversation history.
+  const sqlGenerationPrompt = `You are a world-class PostgreSQL query generation engine.
+Your sole purpose is to generate a single, read-only SQL query based on a user's question and a provided database schema.
 
-**Database Schema for 'flight_schedule' table:**
+**DATABASE SCHEMA:**
+\`\`\`json
 ${schemaDefinition}
+\`\`\`
 
-**Conversation History:**
+**RULES & CONSTRAINTS:**
+1.  **STICK TO THE SCHEMA:** You MUST ONLY use the tables and columns defined in the schema above. DO NOT invent columns or tables. DO NOT use columns that are not listed.
+2.  **READ-ONLY:** The query must be a \`SELECT\` statement.
+3.  **CASE-INSENSITIVE SEARCH:** For string comparisons on columns like \`airline_code\`, \`flight_number\`, \`departure_airport_name\`, and \`arrival_airport_name\`, ALWAYS use the \`ILIKE\` operator with wildcards (\`%\`) to ensure broad, case-insensitive matching.
+4.  **DATE HANDLING:** The current date is ${new Date().toISOString().split('T')[0]}. Use this for any queries related to "today". Cast date/time columns to date for comparison, e.g., \`DATE(origin_date_time) = 'YYYY-MM-DD'\`.
+5.  **RELEVANT COLUMNS:** Select columns that directly answer the user's question. For general status, include key fields like \`operational_status_description\`, \`scheduled_departure_time\`, \`scheduled_arrival_time\`, and \`gate_name\`. Always include \`airline_code\` and \`flight_number\` for identification.
+6.  **NO GUESSING:** If the user's question cannot be answered using the provided schema, DO NOT generate a query. Instead, output the exact text: "UNANSWERABLE".
+7.  **OUTPUT FORMAT:** Your output MUST be the raw SQL query and nothing else. Do not include any explanations, comments, or markdown like \`\`\`sql.
+
+**CONVERSATION HISTORY:**
 ${formattedHistory}
 
-**User's Latest Question:** "${user_query}"
+**USER'S QUESTION:**
+"${user_query}"
 
-**CRITICAL INSTRUCTIONS:**
-1.  **Generate a single, valid PostgreSQL query.**
-2.  The current date is ${new Date().toISOString().split('T')[0]}. Use this for queries about "today" or "tonight".
-3.  Use the \`ILIKE\` operator with wildcards (\`%\`) for case-insensitive text matching on columns like \`airline_code\`, \`flight_number\`, \`departure_airport_name\`, and \`arrival_airport_name\`. For example, to find flight 'AA123', use \`WHERE flight_number ILIKE '%AA123%'\`.
-4.  Select columns that are most relevant to the user's question. If they ask about a gate, select \`gate_name\`. If they ask about delays, select \`delay_duration\`. For a general status query, select key fields like \`operational_status_description\`, \`scheduled_departure_time\`, \`scheduled_arrival_time\`, and \`gate_name\`. Always include the airline and flight number for context.
-5.  **DO NOT** use markdown (\`\`\`sql\`) or any other text, just the raw SQL query.
-
-**SQL Query:`;
+**SQL QUERY:**`;
 
   const generatedSql = (await callGemini(geminiApiKey, sqlGenerationPrompt)).replace(/```sql\n|```/g, '').trim();
   console.log("Generated SQL:", generatedSql);
 
-  if (!generatedSql || !generatedSql.toUpperCase().startsWith('SELECT')) {
-      console.error("SQL Generation Failed. Response:", generatedSql);
-      return { response: "I'm sorry, I had trouble understanding how to find that information. Could you rephrase your question?", suggestions: [], generatedSql: generatedSql || "Failed to generate SQL." };
+  if (!generatedSql || generatedSql.toUpperCase() === 'UNANSWERABLE' || !generatedSql.toUpperCase().startsWith('SELECT')) {
+      console.error("SQL Generation Failed or Unanswerable. Response:", generatedSql);
+      return { response: "I'm sorry, I can't answer that question with the information I have. Could you try asking about flight status, gates, or times?", suggestions: [], generatedSql: generatedSql || "Failed to generate valid SQL." };
   }
 
-  // 3. Execute the generated SQL
   const { data: queryResult, error: queryError } = await supabase.rpc('execute_sql_query', {
     query_text: generatedSql
   });
@@ -95,7 +98,6 @@ ${formattedHistory}
     return { response: `I'm sorry, I ran into a database error.`, suggestions: [], generatedSql };
   }
 
-  // 4. Summarize the result
   if (queryResult && Array.isArray(queryResult) && queryResult.length > 0) {
     const summarizationPrompt = `You are Mia, a helpful flight assistant. Your task is to provide a clear and direct answer to the user's question based on the database results and conversation history.
 
@@ -110,7 +112,6 @@ ${JSON.stringify(queryResult, null, 2)}
     
     const summary = await callGemini(geminiApiKey, summarizationPrompt);
 
-    // 5. Generate suggestions
     const suggestionGenerationPrompt = `You are an expert AI assistant that generates relevant follow-up questions for a user inquiring about flight information. Your suggestions MUST be answerable using ONLY the provided database schema.
 
 **Database Schema for 'flight_schedule' table:**
@@ -136,14 +137,13 @@ ${schemaDefinition}
         suggestions = JSON.parse(suggestionsText.replace(/```json\n|```/g, '').trim());
     } catch (e) {
         console.error("Failed to parse suggestions JSON:", suggestionsText, e);
-        suggestions = []; // Default to empty array on failure
+        suggestions = [];
     }
 
     return { response: summary, suggestions, generatedSql };
   }
 
-  // Handle no results found
-  return { response: `I couldn't find any information for your query. Please try rephrasing your question.`, suggestions: ["Is flight AA 100 on time?", "What is the status of flight DL 200?", "Which gate is flight UA 300 departing from?"], generatedSql };
+  return { response: `I couldn't find any information for your query. Please check the details and try again.`, suggestions: [], generatedSql };
 }
 
 // Tool 2: General Conversation Logic
@@ -165,7 +165,6 @@ async function handleStructuredSearch(supabase, geminiApiKey, searchParams) {
   console.log("Inside handleStructuredSearch (RPC)");
   const { airlineCode, flightNumber, date } = searchParams;
 
-  // 1. Call the get_flight_info RPC function
   const { data: queryResult, error: queryError } = await supabase.rpc('get_flight_info', {
     p_airline_code: airlineCode || null,
     p_flight_number: flightNumber || null,
@@ -177,7 +176,6 @@ async function handleStructuredSearch(supabase, geminiApiKey, searchParams) {
     return { response: `I'm sorry, I ran into a database error while searching.`, suggestions: [], generatedSql: `RPC Call: get_flight_info with params: ${JSON.stringify(searchParams)}` };
   }
 
-  // 2. Summarize the result
   if (queryResult && Array.isArray(queryResult) && queryResult.length > 0) {
     const summarizationPrompt = `You are Mia, a helpful flight assistant. Your task is to provide a clear and direct summary of the flight information found.
 
@@ -192,7 +190,6 @@ ${JSON.stringify(queryResult, null, 2)}
     
     const summary = await callGemini(geminiApiKey, summarizationPrompt);
 
-    // 3. Generate suggestions
     const { data: schemaData } = await supabase
       .from('schema_metadata')
       .select('schema_json')
@@ -230,7 +227,6 @@ ${schemaDefinition}
     return { response: summary, suggestions, generatedSql: `RPC: get_flight_info(${JSON.stringify(searchParams, null, 2)})` };
   }
 
-  // Handle no results found
   return { response: `I couldn't find any flight information for your search. Please check the details and try again.`, suggestions: [], generatedSql: `RPC Call: get_flight_info with params: ${JSON.stringify(searchParams)}` };
 }
 
