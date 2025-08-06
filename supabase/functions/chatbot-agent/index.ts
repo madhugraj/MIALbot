@@ -124,12 +124,11 @@ ${formattedHistory}
     return { response: `I'm sorry, I ran into a database error.`, generatedSql };
   }
 
-  // This is the crucial change: always pass the result to the summarizer if a result set is returned.
-  // The summarizer now has a CRITICAL RULE to handle null values.
   if (queryResult && Array.isArray(queryResult) && queryResult.length > 0) {
     const summarizationPrompt = `You are Mia, a helpful flight assistant. Your task is to provide a clear and direct answer to the user's question based on the database results and conversation history.
 
-**CRITICAL RULE:** If the database result for the specific information requested is \`null\` or empty, you MUST state that the information is not available. Do not try to make up an answer or ignore the \`null\`. For example, if asked for duration and the result is \`{"travel_duration": null}\`, you must say the duration is not available.
+**CRITICAL RULE FOR NULL RESULTS:**
+If the database results show that the specific information requested by the user is \`null\` (e.g., \`"travel_duration": null\`), you MUST explicitly state that the information is not available. For example, if the user asks for "travel duration" and the result is \`{"travel_duration": null}\`, your response MUST be: "The travel duration for this flight is not available." Do not invent information or ignore null values.
 
 **Conversation History:**
 ${formattedHistory}
@@ -141,6 +140,7 @@ ${JSON.stringify(queryResult, null, 2)}
 **Your Answer (be conversational and helpful):**`;
     
     const summary = await callGemini(geminiApiKey, summarizationPrompt);
+    console.log("Gemini Summarization Response:", summary); // Added for debugging
     return { response: summary, generatedSql };
   }
 
