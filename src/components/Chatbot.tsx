@@ -5,15 +5,24 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { SendHorizonal, MessageSquarePlus, X, Plus, Mic } from "lucide-react";
+import { SendHorizonal, MessageSquarePlus, X, Plus, Mic, Database } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { supabase } from "@/integrations/supabase/client";
 
 interface Message {
   id: number;
   text: string;
   sender: "user" | "bot";
+  generatedSql?: string | null;
 }
+
+const PRE_POPULATED_QUESTIONS = [
+  "Is flight AA 100 on time?",
+  "What is the status of flight DL 200?",
+  "Which gate is flight UA 300 departing from?",
+  "Where can I find baggage claim?",
+];
 
 const Chatbot: React.FC = () => {
   const messageIdCounter = useRef(0);
@@ -26,7 +35,7 @@ const Chatbot: React.FC = () => {
   ]);
   const [input, setInput] = useState<string>("");
   const [isBotTyping, setIsBotTyping] = useState<boolean>(false);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggestions, setSuggestions] = useState<string[]>(PRE_POPULATED_QUESTIONS);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -40,7 +49,7 @@ const Chatbot: React.FC = () => {
   const sendMessage = async (text: string) => {
     if (text.trim() === "") return;
 
-    setSuggestions([]); // Clear previous suggestions
+    setSuggestions([]);
     const newUserMessage: Message = {
       id: messageIdCounter.current++,
       text,
@@ -72,9 +81,10 @@ const Chatbot: React.FC = () => {
           id: messageIdCounter.current++,
           text: data.response,
           sender: "bot",
+          generatedSql: data.generatedSql,
         };
         setMessages((prevMessages) => [...prevMessages, botResponse]);
-        if (data.suggestions && Array.isArray(data.suggestions)) {
+        if (data.suggestions && Array.isArray(data.suggestions) && data.suggestions.length > 0) {
           setSuggestions(data.suggestions);
         }
       }
@@ -114,13 +124,13 @@ const Chatbot: React.FC = () => {
       
       <CardContent className="flex-1 overflow-hidden p-0 flex flex-col">
         <ScrollArea className="h-full p-6">
-          <div className="flex flex-col space-y-4">
+          <div className="flex flex-col space-y-1">
             {messages.map((message) => (
+              <React.Fragment key={message.id}>
               <div
-                key={message.id}
                 className={`flex items-end gap-2.5 ${
                   message.sender === "user" ? "justify-end" : "justify-start"
-                }`}
+                } mt-3`}
               >
                 {message.sender === "bot" && (
                   <Avatar className="w-8 h-8">
@@ -138,9 +148,28 @@ const Chatbot: React.FC = () => {
                   {message.text}
                 </div>
               </div>
+              {message.sender === 'bot' && message.generatedSql && (
+                <div className="flex justify-start">
+                    <div className="w-8 h-8 flex-shrink-0"></div>
+                    <div className="ml-2.5 w-full max-w-[75%]">
+                        <Accordion type="single" collapsible className="w-full">
+                            <AccordionItem value="item-1" className="border-none">
+                                <AccordionTrigger className="text-xs text-gray-500 hover:no-underline py-1 justify-start gap-1">
+                                    <Database className="h-3 w-3" />
+                                    Show generated SQL
+                                </AccordionTrigger>
+                                <AccordionContent className="mt-1 p-2 bg-gray-100 rounded-md">
+                                    <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono"><code>{message.generatedSql}</code></pre>
+                                </AccordionContent>
+                            </AccordionItem>
+                        </Accordion>
+                    </div>
+                </div>
+              )}
+              </React.Fragment>
             ))}
             {isBotTyping && (
-              <div className="flex items-end gap-2.5 justify-start">
+              <div className="flex items-end gap-2.5 justify-start mt-3">
                 <Avatar className="w-8 h-8">
                   <AvatarImage src="https://github.com/shadcn.png" alt="Mia Avatar" />
                   <AvatarFallback>M</AvatarFallback>
