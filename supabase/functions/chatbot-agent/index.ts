@@ -230,9 +230,11 @@ serve(async (req) => {
     const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
     if (!geminiApiKey) throw new Error('GEMINI_API_KEY is not set.');
 
+    // Use the service_role key to bypass RLS.
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      { auth: { autoRefreshToken: false, persistSession: false } }
     );
     
     const result = await handleTextToSQLQuery(supabase, geminiApiKey, user_query, history);
