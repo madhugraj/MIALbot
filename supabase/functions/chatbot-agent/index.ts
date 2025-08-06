@@ -125,25 +125,26 @@ ${formattedHistory}
   }
 
   if (queryResult && Array.isArray(queryResult) && queryResult.length > 0) {
-    // Extract the first key and its value from the query result
     const firstResult = queryResult[0];
-    const resultKey = Object.keys(firstResult)[0]; // e.g., "is_delayed" or "travel_duration"
-    const resultValue = firstResult[resultKey]; // e.g., "No", "Yes", or null
+    const resultValue = firstResult[Object.keys(firstResult)[0]];
 
-    const summarizationPrompt = `You are Mia, a helpful flight assistant. Your task is to provide a clear and direct answer to the user's question based on the database result value and conversation history.
+    const summarizationPrompt = `You are a helpful flight assistant. Convert the following data into a natural, conversational sentence to answer the user's question.
 
-**CRITICAL RULE FOR MISSING/NULL RESULTS:**
-If the provided "Database Result Value" is 'null' or 'undefined', you MUST explicitly state that the information is not available. For example, if the user asks for "travel duration" and the "Database Result Value" is 'null', your response MUST be: "The travel duration for this flight is not available." Do not invent information or ignore missing values.
+- User's question: "${user_query}"
+- Data to answer question: "${resultValue}"
 
-**Conversation History:**
-${formattedHistory}
-**User's Latest Question:** "${user_query}"
-**Database Result Value:** "${resultValue}" (for the key "${resultKey}")
+CRITICAL: If the data is 'null' or empty, you MUST respond that the information is not available for this flight.
 
-**Your Answer (be conversational and helpful):**`;
+Your response:`;
     
     const summary = await callGemini(geminiApiKey, summarizationPrompt);
     console.log("Gemini Summarization Response:", summary);
+
+    if (!summary || summary.trim() === "") {
+        console.error("Summarization failed: Gemini returned an empty response.");
+        return { response: "I found the information, but I had trouble summarizing it. Please try rephrasing your question.", generatedSql };
+    }
+
     return { response: summary, generatedSql };
   }
 
