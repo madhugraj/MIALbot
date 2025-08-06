@@ -30,7 +30,6 @@ const Chatbot: React.FC = () => {
   ]);
   const [input, setInput] = useState<string>("");
   const [isBotTyping, setIsBotTyping] = useState<boolean>(false);
-  const [lastUserQuestion, setLastUserQuestion] = useState<string>("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -51,10 +50,6 @@ const Chatbot: React.FC = () => {
       sender: "user",
     };
     
-    if (newUserMessage.sender === 'user') {
-        setLastUserQuestion(text.split(" on ")[0]);
-    }
-
     setMessages(prevMessages => [...prevMessages, newUserMessage]);
     setInput("");
     setIsBotTyping(true);
@@ -95,8 +90,7 @@ const Chatbot: React.FC = () => {
   };
 
   const handleFollowUpSelect = (selection: string) => {
-    const newQuery = `${lastUserQuestion} on ${selection}`;
-    handleSendMessage(newQuery);
+    handleSendMessage(selection);
   };
 
   const handleQuestionSelect = (question: string) => {
