@@ -9,8 +9,6 @@ import { SendHorizonal, X, Plus, Mic, Database } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { supabase } from "@/integrations/supabase/client";
-import { FlightSearchForm, FlightSearchFormValues } from "./FlightSearchForm";
-import { format } from "date-fns";
 
 interface Message {
   id: number;
@@ -24,7 +22,7 @@ const Chatbot: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: messageIdCounter.current++,
-      text: "Hello! I'm Mia. Please use the form to search for a specific flight, or ask me a general question below.",
+      text: "Hello! I'm Mia, your flight assistant. How can I help you today?",
       sender: "bot",
     },
   ]);
@@ -40,11 +38,26 @@ const Chatbot: React.FC = () => {
     scrollToBottom();
   }, [messages, isBotTyping]);
 
-  const callChatbotAPI = async (body: object) => {
+  const handleSendMessage = async (text: string) => {
+    if (text.trim() === "") return;
+
+    const newUserMessage: Message = {
+      id: messageIdCounter.current++,
+      text,
+      sender: "user",
+    };
+    
+    setMessages(prevMessages => [...prevMessages, newUserMessage]);
+    setInput("");
     setIsBotTyping(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('chatbot-agent', { body });
+      const { data, error } = await supabase.functions.invoke('chatbot-agent', {
+        body: { 
+          user_query: text,
+          history: [...messages, newUserMessage].map(m => ({ text: m.text, sender: m.sender }))
+        },
+      });
 
       if (error) {
         throw new Error(`Edge Function Error: ${error.message}`);
@@ -72,40 +85,6 @@ const Chatbot: React.FC = () => {
     }
   };
 
-  const handleFormSearch = (searchData: FlightSearchFormValues) => {
-    const searchMessage: Message = {
-      id: messageIdCounter.current++,
-      text: `Searching for flight ${searchData.airlineCode} ${searchData.flightNumber}...`,
-      sender: 'user',
-    };
-    setMessages(prev => [...prev, searchMessage]);
-    
-    callChatbotAPI({
-      searchParams: {
-        airlineCode: searchData.airlineCode,
-        flightNumber: searchData.flightNumber,
-        date: searchData.date,
-      }
-    });
-  };
-
-  const handleFreeTextSearch = (text: string) => {
-    if (text.trim() === "") return;
-
-    const newUserMessage: Message = {
-      id: messageIdCounter.current++,
-      text,
-      sender: "user",
-    };
-    setMessages(prevMessages => [...prevMessages, newUserMessage]);
-    setInput("");
-
-    callChatbotAPI({
-      user_query: text,
-      history: [...messages, newUserMessage].map(m => ({ text: m.text, sender: m.sender }))
-    });
-  };
-
   return (
     <Card className="w-full max-w-lg mx-auto flex flex-col h-[80vh] max-h-[800px] rounded-2xl shadow-2xl bg-white/80 backdrop-blur-sm border-0 overflow-hidden">
       <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-purple-500 to-indigo-600"></div>
@@ -120,8 +99,6 @@ const Chatbot: React.FC = () => {
         <X className="w-5 h-5 text-gray-500 cursor-pointer hover:text-gray-800" />
       </CardHeader>
       
-      <FlightSearchForm onSearch={handleFormSearch} isSearching={isBotTyping} />
-
       <CardContent className="flex-1 overflow-hidden p-0 flex flex-col">
         <ScrollArea className="h-full p-6">
           <div className="flex flex-col space-y-1">
@@ -191,13 +168,13 @@ const Chatbot: React.FC = () => {
       <CardFooter className="p-3 border-t border-gray-100 bg-transparent">
         <div className="w-full p-2 bg-white/70 rounded-xl shadow-inner">
             <Textarea
-              placeholder="Or ask a general question..."
+              placeholder="Ask about a flight..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  handleFreeTextSearch(input);
+                  handleSendMessage(input);
                 }
               }}
               className="w-full bg-transparent border-0 resize-none p-2 focus-visible:ring-0 focus-visible:ring-offset-0"
@@ -212,7 +189,7 @@ const Chatbot: React.FC = () => {
                         <Mic className="w-5 h-5" />
                     </Button>
                 </div>
-                <Button onClick={() => handleFreeTextSearch(input)} size="icon" className="rounded-full w-10 h-10 p-0 flex items-center justify-center bg-purple-600 hover:bg-purple-700 transition-colors text-white">
+                <Button onClick={() => handleSendMessage(input)} size="icon" className="rounded-full w-10 h-10 p-0 flex items-center justify-center bg-purple-600 hover:bg-purple-700 transition-colors text-white">
                     <SendHorizonal className="h-5 w-5" />
                 </Button>
             </div>
