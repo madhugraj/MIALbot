@@ -125,22 +125,25 @@ ${formattedHistory}
   }
 
   if (queryResult && Array.isArray(queryResult) && queryResult.length > 0) {
-    const summarizationPrompt = `You are Mia, a helpful flight assistant. Your task is to provide a clear and direct answer to the user's question based on the database results and conversation history.
+    // Extract the first key and its value from the query result
+    const firstResult = queryResult[0];
+    const resultKey = Object.keys(firstResult)[0]; // e.g., "is_delayed" or "travel_duration"
+    const resultValue = firstResult[resultKey]; // e.g., "No", "Yes", or null
 
-**CRITICAL RULE FOR NULL RESULTS:**
-If the database results show that the specific information requested by the user is \`null\` (e.g., \`"travel_duration": null\`), you MUST explicitly state that the information is not available. For example, if the user asks for "travel duration" and the result is \`{"travel_duration": null}\`, your response MUST be: "The travel duration for this flight is not available." Do not invent information or ignore null values.
+    const summarizationPrompt = `You are Mia, a helpful flight assistant. Your task is to provide a clear and direct answer to the user's question based on the database result value and conversation history.
+
+**CRITICAL RULE FOR MISSING/NULL RESULTS:**
+If the provided "Database Result Value" is 'null' or 'undefined', you MUST explicitly state that the information is not available. For example, if the user asks for "travel duration" and the "Database Result Value" is 'null', your response MUST be: "The travel duration for this flight is not available." Do not invent information or ignore missing values.
 
 **Conversation History:**
 ${formattedHistory}
 **User's Latest Question:** "${user_query}"
-**Database Results (JSON):**
-\`\`\`json
-${JSON.stringify(queryResult, null, 2)}
-\`\`\`
+**Database Result Value:** "${resultValue}" (for the key "${resultKey}")
+
 **Your Answer (be conversational and helpful):**`;
     
     const summary = await callGemini(geminiApiKey, summarizationPrompt);
-    console.log("Gemini Summarization Response:", summary); // Added for debugging
+    console.log("Gemini Summarization Response:", summary);
     return { response: summary, generatedSql };
   }
 
