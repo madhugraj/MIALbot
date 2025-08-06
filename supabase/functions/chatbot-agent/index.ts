@@ -124,6 +124,8 @@ ${formattedHistory}
     return { response: `I'm sorry, I ran into a database error.`, generatedSql };
   }
 
+  // This is the crucial change: always pass the result to the summarizer if a result set is returned.
+  // The summarizer now has a CRITICAL RULE to handle null values.
   if (queryResult && Array.isArray(queryResult) && queryResult.length > 0) {
     const summarizationPrompt = `You are Mia, a helpful flight assistant. Your task is to provide a clear and direct answer to the user's question based on the database results and conversation history.
 
