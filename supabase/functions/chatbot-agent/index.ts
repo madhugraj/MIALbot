@@ -59,6 +59,8 @@ ${schemaDefinition}
 
 **COLUMN EXPLANATIONS & USAGE:**
 *   \`operational_status_description\`: **USE THIS FOR FLIGHT STATUS.** This is the primary field for human-readable flight status (e.g., "On Time", "Delayed", "Cancelled").
+*   \`arrival_airport_name\`: The name of the arrival airport. **USE THIS to answer questions about the flight's "destination" or "arrival location".**
+*   \`departure_airport_name\`: The name of the departure airport.
 *   \`gate_name\`: The specific gate for the flight (e.g., "A12").
 *   \`terminal_name\`: The terminal where the gate is located (e.g., "Terminal 1").
 *   \`delay_duration\`: The length of any delay. Use this to answer questions about how long a flight is delayed.
