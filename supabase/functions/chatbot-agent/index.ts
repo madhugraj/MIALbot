@@ -49,47 +49,31 @@ async function handleTextToSQLQuery(supabase, geminiApiKey, user_query, formatte
     return { response: "I'm sorry, I can't access my knowledge base right now. Please try again later.", generatedSql: null };
   }
   const schemaDefinition = JSON.stringify(schemaData.schema_json, null, 2);
-  const today = new Date().toISOString().split('T')[0];
 
-  const sqlGenerationPrompt = `You are a hyper-literal, no-nonsense PostgreSQL query generation engine. Your ONLY purpose is to generate a single, read-only SQL query based on a user's question and a provided database schema. You must follow all rules to the letter.
+  const sqlGenerationPrompt = `You are a hyper-literal, no-nonsense PostgreSQL query generation engine. Your ONLY purpose is to generate a single, read-only SQL query or a JSON object for clarification. You must follow all rules to the letter.
 
 **DATABASE SCHEMA for the 'flight_schedule' table:**
 \`\`\`json
 ${schemaDefinition}
 \`\`\`
 
-**COLUMN EXPLANATIONS & USAGE:**
-*   \`operational_status_description\`: **USE THIS FOR FLIGHT STATUS.** This is the primary field for human-readable flight status (e.g., "On Time", "Delayed", "Cancelled").
-*   \`arrival_airport_name\`: The name of the arrival airport. **USE THIS to answer questions about the flight's "destination" or "arrival location".**
-*   \`departure_airport_name\`: The name of the departure airport. **USE THIS to answer questions about where a flight is "coming from".**
-*   \`gate_name\`: The specific gate for the flight (e.g., "A12").
-*   \`terminal_name\`: The terminal where the gate is located (e.g., "Terminal 1").
-*   \`delay_duration\`: The length of any delay. Use this to answer questions about how long a flight is delayed.
-*   \`remark_free_text\`: Provides additional context or reasons for the flight's status (e.g., "Delayed due to weather").
-*   **Time Fields**:
-    *   Use \`scheduled_departure_time\` or \`scheduled_arrival_time\` for scheduled times.
-    *   Use \`estimated_departure_time\` or \`estimated_arrival_time\` for current estimated times, which include delays.
-    *   Use \`actual_departure_time\` or \`actual_arrival_time\` for times after the event has occurred.
-*   **Calculations**: You can perform simple calculations like time differences directly in the query (e.g., \`estimated_arrival_time - estimated_departure_time\`). Use appropriate aliases for calculated columns.
+**CRITICAL RULES:**
+1.  **AMBIGUITY DETECTION:** If a user's question is ambiguous because a date is missing for a date-sensitive query (like status, duration, gate), you MUST NOT guess the date. Instead, your entire output MUST be a single JSON object with this exact structure: \`{"requires_clarification": true, "query_for_options": "SELECT DISTINCT TO_CHAR(origin_date_time, 'YYYY-MM-DD') AS option FROM public.flight_schedule WHERE flight_number ILIKE '%<flight_number>%' ORDER BY option DESC"}\`. Replace \`<flight_number>\` with the flight number from the user's query.
+2.  **NORMAL OPERATION:** If the question is unambiguous (e.g., a date is provided), generate the SQL query as normal. Do not wrap it in JSON.
+3.  **SCHEMA ADHERENCE:** You MUST ONLY use the columns explicitly listed in the schema.
+4.  **READ-ONLY:** The query MUST be a \`SELECT\` statement.
+5.  **CASE-INSENSITIVE SEARCH:** For all string comparisons, you MUST use the \`ILIKE\` operator with wildcards (\`%\`).
+6.  **DATE HANDLING:** When a date is provided, you MUST cast the timestamp column to a date: \`DATE(origin_date_time) = 'YYYY-MM-DD'\`.
+7.  **UNANSWERABLE QUESTIONS:** If a question cannot be answered, output the exact text: "UNANSWERABLE".
+8.  **OUTPUT FORMAT:** Your output must be either the raw SQL query OR the JSON object for clarification. Nothing else.
 
 **EXAMPLES:**
-*   **User Question:** "What is the status of flight BA2490?"
-    **SQL Query:** \`SELECT operational_status_description, remark_free_text FROM public.flight_schedule WHERE flight_number ILIKE '%BA2490%' AND DATE(origin_date_time) = '${today}'\`
-*   **User Question:** "When is flight 920 arriving on july 12 and where is it coming from?"
-    **SQL Query:** \`SELECT estimated_arrival_time, departure_airport_name FROM public.flight_schedule WHERE flight_number ILIKE '%920%' AND DATE(origin_date_time) = '2024-07-12'\`
-*   **User Question:** "Is flight DL456 delayed?"
-    **SQL Query:** \`SELECT operational_status_description, delay_duration FROM public.flight_schedule WHERE flight_number ILIKE '%DL456%' AND DATE(origin_date_time) = '${today}'\`
-*   **User Question:** "What is the travel duration for flight AA100?"
-    **SQL Query:** \`SELECT (estimated_arrival_time - estimated_departure_time) AS travel_duration FROM public.flight_schedule WHERE flight_number ILIKE '%AA100%' AND DATE(origin_date_time) = '${today}'\`
-
-**CRITICAL RULES:**
-1.  **ABSOLUTE SCHEMA ADHERENCE:** You MUST ONLY use the columns explicitly listed in the schema and explanations above. DO NOT use any column that is not in that list. DO NOT invent columns.
-2.  **SCHEMA PREFIX REQUIRED:** You MUST prefix the table name with its schema: \`public.flight_schedule\`. Queries without this prefix will fail.
-3.  **READ-ONLY:** The query MUST be a \`SELECT\` statement.
-4.  **CASE-INSENSITIVE SEARCH:** For all string comparisons (e.g., on \`airline_code\`, \`flight_number\`, \`departure_airport_name\`), you MUST use the \`ILIKE\` operator with wildcards (\`%\`).
-5.  **DATE HANDLING:** The current date is ${today}. For date comparisons, you MUST cast the timestamp column to a date: \`DATE(origin_date_time) = 'YYYY-MM-DD'\`. If the user does not provide a year, assume the current year.
-6.  **NO GUESSING / UNANSWERABLE QUESTIONS:** If the user's question CANNOT be answered using the provided schema, DO NOT generate a query. Instead, you MUST output the exact text: "UNANSWERABLE".
-7.  **OUTPUT FORMAT:** Your output MUST be the raw SQL query and nothing else. Do not include any explanations, comments, or markdown.
+*   **User Question:** "What is the status of flight BA2490 on July 12 2024?" (Unambiguous)
+    **SQL Query:** \`SELECT operational_status_description, remark_free_text FROM public.flight_schedule WHERE flight_number ILIKE '%BA2490%' AND DATE(origin_date_time) = '2024-07-12'\`
+*   **User Question:** "What is the status of flight BA2490?" (Ambiguous date)
+    **JSON Output:** \`{"requires_clarification": true, "query_for_options": "SELECT DISTINCT TO_CHAR(origin_date_time, 'YYYY-MM-DD') AS option FROM public.flight_schedule WHERE flight_number ILIKE '%BA2490%' ORDER BY option DESC"}\`
+*   **User Question:** "What is the travel duration for flight AA100?" (Ambiguous date)
+    **JSON Output:** \`{"requires_clarification": true, "query_for_options": "SELECT DISTINCT TO_CHAR(origin_date_time, 'YYYY-MM-DD') AS option FROM public.flight_schedule WHERE flight_number ILIKE '%AA100%' ORDER BY option DESC"}\`
 
 **CONVERSATION HISTORY:**
 ${formattedHistory}
@@ -97,14 +81,39 @@ ${formattedHistory}
 **USER'S QUESTION:**
 "${user_query}"
 
-**SQL QUERY:**`;
+**YOUR RESPONSE (SQL or JSON):**`;
 
-  const generatedSql = (await callGemini(geminiApiKey, sqlGenerationPrompt)).replace(/```sql\n|```/g, '').trim();
-  console.log("Generated SQL:", generatedSql);
+  const geminiResponse = (await callGemini(geminiApiKey, sqlGenerationPrompt)).replace(/```json\n|```/g, '').trim();
+  console.log("Gemini Raw Response:", geminiResponse);
 
+  let parsedResponse;
+  try {
+    parsedResponse = JSON.parse(geminiResponse);
+  } catch (e) {
+    parsedResponse = null;
+  }
+
+  if (parsedResponse && parsedResponse.requires_clarification) {
+    console.log("Clarification needed. Query for options:", parsedResponse.query_for_options);
+    const { data: options, error: optionsError } = await supabase.rpc('execute_sql_query', { query_text: parsedResponse.query_for_options });
+
+    if (optionsError || !options || options.length === 0) {
+      console.error('Error fetching options or no options found:', optionsError);
+      return { response: "I couldn't find any dates for that flight. Please check the flight number and try again.", generatedSql: parsedResponse.query_for_options };
+    }
+
+    return {
+      response: `I found several dates for that flight. Which one are you interested in?`,
+      generatedSql: parsedResponse.query_for_options,
+      requiresFollowUp: true,
+      followUpOptions: options.map(opt => opt.option)
+    };
+  }
+
+  const generatedSql = geminiResponse;
   if (!generatedSql || generatedSql.toUpperCase() === 'UNANSWERABLE' || !generatedSql.toUpperCase().startsWith('SELECT')) {
       console.error("SQL Generation Failed or Unanswerable. Response:", generatedSql);
-      return { response: "I'm sorry, I can't answer that question with the information I have. Could you try asking about flight status, gates, or times?", generatedSql: generatedSql || "Failed to generate valid SQL." };
+      return { response: "I'm sorry, I can't answer that question with the information I have.", generatedSql: generatedSql || "Failed to generate valid SQL." };
   }
 
   const { data: queryResult, error: queryError } = await supabase.rpc('execute_sql_query', { query_text: generatedSql });

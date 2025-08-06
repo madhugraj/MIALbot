@@ -16,6 +16,7 @@ interface Message {
   text: string;
   sender: "user" | "bot";
   generatedSql?: string | null;
+  followUpOptions?: string[];
 }
 
 const Chatbot: React.FC = () => {
@@ -29,6 +30,7 @@ const Chatbot: React.FC = () => {
   ]);
   const [input, setInput] = useState<string>("");
   const [isBotTyping, setIsBotTyping] = useState<boolean>(false);
+  const [lastUserQuestion, setLastUserQuestion] = useState<string>("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -49,6 +51,10 @@ const Chatbot: React.FC = () => {
       sender: "user",
     };
     
+    if (newUserMessage.sender === 'user') {
+        setLastUserQuestion(text.split(" on ")[0]);
+    }
+
     setMessages(prevMessages => [...prevMessages, newUserMessage]);
     setInput("");
     setIsBotTyping(true);
@@ -70,6 +76,7 @@ const Chatbot: React.FC = () => {
         text: data.response,
         sender: "bot",
         generatedSql: data.generatedSql,
+        followUpOptions: data.requiresFollowUp ? data.followUpOptions : undefined,
       };
       setMessages((prevMessages) => [...prevMessages, botResponse]);
 
@@ -85,6 +92,11 @@ const Chatbot: React.FC = () => {
     } finally {
       setIsBotTyping(false);
     }
+  };
+
+  const handleFollowUpSelect = (selection: string) => {
+    const newQuery = `${lastUserQuestion} on ${selection}`;
+    handleSendMessage(newQuery);
   };
 
   const handleQuestionSelect = (question: string) => {
@@ -132,6 +144,26 @@ const Chatbot: React.FC = () => {
                   {message.text}
                 </div>
               </div>
+
+              {message.sender === 'bot' && message.followUpOptions && message.followUpOptions.length > 0 && (
+                <div className="flex justify-start">
+                    <div className="w-8 h-8 flex-shrink-0"></div>
+                    <div className="ml-2.5 mt-2 flex flex-wrap gap-2">
+                        {message.followUpOptions.map((option, index) => (
+                            <Button
+                                key={index}
+                                variant="outline"
+                                size="sm"
+                                className="bg-white/80 hover:bg-white"
+                                onClick={() => handleFollowUpSelect(option)}
+                            >
+                                {option}
+                            </Button>
+                        ))}
+                    </div>
+                </div>
+              )}
+
               {message.sender === 'bot' && message.generatedSql && (
                 <div className="flex justify-start">
                     <div className="w-8 h-8 flex-shrink-0"></div>
