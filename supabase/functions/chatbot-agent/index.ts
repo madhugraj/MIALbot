@@ -61,19 +61,20 @@ ${schemaDefinition}
 1.  **AMBIGUITY DETECTION:** If a user's question is ambiguous because a date is missing for a date-sensitive query (like status, duration, gate), you MUST NOT guess the date. Instead, your entire output MUST be a single JSON object with this exact structure: \`{"requires_clarification": true, "query_for_options": "SELECT DISTINCT TO_CHAR(origin_date_time, 'YYYY-MM-DD') AS option FROM public.flight_schedule WHERE flight_number ILIKE '%<flight_number>%' ORDER BY option DESC"}\`. Replace \`<flight_number>\` with the flight number from the user's query.
 2.  **NORMAL OPERATION:** If the question is unambiguous (e.g., a date is provided), generate the SQL query as normal. Do not wrap it in JSON.
 3.  **SCHEMA ADHERENCE:** You MUST ONLY use the columns explicitly listed in the schema.
-4.  **READ-ONLY:** The query MUST be a \`SELECT\` statement.
-5.  **CASE-INSENSITIVE SEARCH:** For all string comparisons, you MUST use the \`ILIKE\` operator with wildcards (\`%\`).
-6.  **DATE HANDLING:** When a date is provided, you MUST cast the timestamp column to a date: \`DATE(origin_date_time) = 'YYYY-MM-DD'\`.
-7.  **UNANSWERABLE QUESTIONS:** If a question cannot be answered, output the exact text: "UNANSWERABLE".
-8.  **OUTPUT FORMAT:** Your output must be either the raw SQL query OR the JSON object for clarification. Nothing else.
+4.  **DURATION CALCULATION:** To calculate travel duration, you MUST subtract the departure time from the arrival time (e.g., \`actual_arrival_time - actual_departure_time\`). This produces a human-readable interval. **DO NOT use \`EXTRACT\` or other complex functions for duration.**
+5.  **READ-ONLY:** The query MUST be a \`SELECT\` statement.
+6.  **CASE-INSENSITIVE SEARCH:** For all string comparisons, you MUST use the \`ILIKE\` operator with wildcards (\`%\`).
+7.  **DATE HANDLING:** When a date is provided, you MUST cast the timestamp column to a date: \`DATE(origin_date_time) = 'YYYY-MM-DD'\`.
+8.  **UNANSWERABLE QUESTIONS:** If a question cannot be answered, output the exact text: "UNANSWERABLE".
+9.  **OUTPUT FORMAT:** Your output must be either the raw SQL query OR the JSON object for clarification. Nothing else.
 
 **EXAMPLES:**
 *   **User Question:** "What is the status of flight BA2490 on July 12 2024?" (Unambiguous)
     **SQL Query:** \`SELECT operational_status_description, remark_free_text FROM public.flight_schedule WHERE flight_number ILIKE '%BA2490%' AND DATE(origin_date_time) = '2024-07-12'\`
-*   **User Question:** "What is the status of flight BA2490?" (Ambiguous date)
-    **JSON Output:** \`{"requires_clarification": true, "query_for_options": "SELECT DISTINCT TO_CHAR(origin_date_time, 'YYYY-MM-DD') AS option FROM public.flight_schedule WHERE flight_number ILIKE '%BA2490%' ORDER BY option DESC"}\`
 *   **User Question:** "What is the travel duration for flight AA100?" (Ambiguous date)
     **JSON Output:** \`{"requires_clarification": true, "query_for_options": "SELECT DISTINCT TO_CHAR(origin_date_time, 'YYYY-MM-DD') AS option FROM public.flight_schedule WHERE flight_number ILIKE '%AA100%' ORDER BY option DESC"}\`
+*   **User Question:** "What is the travel duration for flight AA100 on 2024-07-12?" (Unambiguous)
+    **SQL Query:** \`SELECT (actual_arrival_time - actual_departure_time) AS travel_duration FROM public.flight_schedule WHERE flight_number ILIKE '%AA100%' AND DATE(origin_date_time) = '2024-07-12'\`
 
 **CONVERSATION HISTORY:**
 ${formattedHistory}
@@ -83,7 +84,7 @@ ${formattedHistory}
 
 **YOUR RESPONSE (SQL or JSON):**`;
 
-  const geminiResponse = (await callGemini(geminiApiKey, sqlGenerationPrompt)).replace(/```json\n|```/g, '').trim();
+  const geminiResponse = (await callGemini(geminiApiKey, sqlGenerationPrompt)).replace(/```json\n|```|```sql\n/g, '').trim();
   console.log("Gemini Raw Response:", geminiResponse);
 
   let parsedResponse;
