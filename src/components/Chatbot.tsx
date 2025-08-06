@@ -9,6 +9,7 @@ import { SendHorizonal, X, Plus, Mic, Database } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { supabase } from "@/integrations/supabase/client";
+import PredefinedQuestions from "./PredefinedQuestions";
 
 interface Message {
   id: number;
@@ -29,6 +30,7 @@ const Chatbot: React.FC = () => {
   const [input, setInput] = useState<string>("");
   const [isBotTyping, setIsBotTyping] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -83,6 +85,11 @@ const Chatbot: React.FC = () => {
     } finally {
       setIsBotTyping(false);
     }
+  };
+
+  const handleQuestionSelect = (question: string) => {
+    setInput(question);
+    inputRef.current?.focus();
   };
 
   return (
@@ -165,9 +172,12 @@ const Chatbot: React.FC = () => {
         </ScrollArea>
       </CardContent>
 
+      <PredefinedQuestions onQuestionSelect={handleQuestionSelect} />
+
       <CardFooter className="p-3 border-t border-gray-100 bg-transparent">
         <div className="w-full p-2 bg-white/70 rounded-xl shadow-inner">
             <Textarea
+              ref={inputRef}
               placeholder="Ask about a flight..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
