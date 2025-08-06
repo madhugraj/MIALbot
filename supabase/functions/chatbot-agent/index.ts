@@ -111,7 +111,7 @@ ${formattedHistory}
     return { response: `I'm sorry, I ran into a database error.`, generatedSql };
   }
 
-  if (queryResult && Array.isArray(queryResult) && query_result.length > 0) {
+  if (queryResult && Array.isArray(queryResult) && queryResult.length > 0) {
     const summarizationPrompt = `You are Mia, a helpful flight assistant. Your task is to provide a clear and direct answer to the user's question based on the database results and conversation history.
 
 **Conversation History:**
