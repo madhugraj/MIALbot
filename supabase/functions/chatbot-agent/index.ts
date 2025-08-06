@@ -192,6 +192,20 @@ Your Output (JSON array of strings):`;
         followUpSuggestions = [];
     }
 
+    // Log the conversation summary to Supabase
+    const { error: insertError } = await supabase
+      .from('summary')
+      .insert([{ 
+        question: user_query, 
+        sql_generated: generatedSql, 
+        answer: summary 
+      }]);
+
+    if (insertError) {
+      // Log the error but don't fail the request for the user
+      console.error("Error logging conversation to summary table:", insertError);
+    }
+
     return { response: summary, generatedSql, followUpSuggestions };
   }
 
