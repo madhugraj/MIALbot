@@ -61,7 +61,7 @@ ${schemaDefinition}
 1.  **AMBIGUITY DETECTION:** If a user's question is ambiguous because a date is missing for a date-sensitive query (like status, duration, gate), you MUST NOT guess the date. Instead, your entire output MUST be a single JSON object with this exact structure: \`{"requires_clarification": true, "query_for_options": "SELECT DISTINCT TO_CHAR(origin_date_time, 'YYYY-MM-DD') AS option FROM public.flight_schedule WHERE flight_number ILIKE '%<flight_number>%' ORDER BY option DESC"}\`. Replace \`<flight_number>\` with the flight number from the user's query.
 2.  **NORMAL OPERATION:** If the question is unambiguous (e.g., a date is provided), generate the SQL query as normal. Do not wrap it in JSON.
 3.  **SCHEMA ADHERENCE:** You MUST ONLY use the columns explicitly listed in the schema.
-4.  **DURATION CALCULATION:** To calculate travel duration, you MUST subtract the departure time from the arrival time (e.g., \`actual_arrival_time - actual_departure_time\`). This produces a human-readable interval. **DO NOT use \`EXTRACT\` or other complex functions for duration.**
+4.  **DURATION CALCULATION:** To calculate travel duration, you MUST calculate the difference between arrival and departure times. Use \`COALESCE\` to ensure a value is present, preferring \`actual\` times but falling back to \`estimated\` times. The formula MUST be: \`(COALESCE(actual_arrival_time, estimated_arrival_time) - COALESCE(actual_departure_time, estimated_departure_time))\`. This produces a human-readable interval. **DO NOT use \`EXTRACT\` or other complex functions.**
 5.  **READ-ONLY:** The query MUST be a \`SELECT\` statement.
 6.  **CASE-INSENSITIVE SEARCH:** For all string comparisons, you MUST use the \`ILIKE\` operator with wildcards (\`%\`).
 7.  **DATE HANDLING:** When a date is provided, you MUST cast the timestamp column to a date: \`DATE(origin_date_time) = 'YYYY-MM-DD'\`.
@@ -74,7 +74,7 @@ ${schemaDefinition}
 *   **User Question:** "What is the travel duration for flight AA100?" (Ambiguous date)
     **JSON Output:** \`{"requires_clarification": true, "query_for_options": "SELECT DISTINCT TO_CHAR(origin_date_time, 'YYYY-MM-DD') AS option FROM public.flight_schedule WHERE flight_number ILIKE '%AA100%' ORDER BY option DESC"}\`
 *   **User Question:** "What is the travel duration for flight AA100 on 2024-07-12?" (Unambiguous)
-    **SQL Query:** \`SELECT (actual_arrival_time - actual_departure_time) AS travel_duration FROM public.flight_schedule WHERE flight_number ILIKE '%AA100%' AND DATE(origin_date_time) = '2024-07-12'\`
+    **SQL Query:** \`SELECT (COALESCE(actual_arrival_time, estimated_arrival_time) - COALESCE(actual_departure_time, estimated_departure_time)) AS travel_duration FROM public.flight_schedule WHERE flight_number ILIKE '%AA100%' AND DATE(origin_date_time) = '2024-07-12'\`
 
 **CONVERSATION HISTORY:**
 ${formattedHistory}
@@ -124,7 +124,7 @@ ${formattedHistory}
     return { response: `I'm sorry, I ran into a database error.`, generatedSql };
   }
 
-  if (queryResult && Array.isArray(queryResult) && queryResult.length > 0) {
+  if (queryResult && Array.isArray(queryResult) && queryResult.length > 0 && Object.values(queryResult[0])[0] !== null) {
     const summarizationPrompt = `You are Mia, a helpful flight assistant. Your task is to provide a clear and direct answer to the user's question based on the database results and conversation history.
 
 **Conversation History:**
