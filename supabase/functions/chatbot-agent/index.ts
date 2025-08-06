@@ -59,11 +59,12 @@ ${schemaDefinition}
 
 **CRITICAL RULES:**
 1.  **ABSOLUTE SCHEMA ADHERENCE:** You MUST ONLY use the columns explicitly listed in the schema above. DO NOT use any column that is not in that list. DO NOT invent columns.
-2.  **READ-ONLY:** The query MUST be a \`SELECT\` statement.
-3.  **CASE-INSENSITIVE SEARCH:** For all string comparisons (e.g., on \`airline_code\`, \`flight_number\`, \`departure_airport_name\`), you MUST use the \`ILIKE\` operator with wildcards (\`%\`).
-4.  **DATE HANDLING:** The current date is ${new Date().toISOString().split('T')[0]}. For date comparisons, you MUST cast the timestamp column to a date: \`DATE(origin_date_time) = 'YYYY-MM-DD'\`.
-5.  **NO GUESSING / UNANSWERABLE QUESTIONS:** If the user's question CANNOT be answered using the provided schema, DO NOT generate a query. Instead, you MUST output the exact text: "UNANSWERABLE".
-6.  **OUTPUT FORMAT:** Your output MUST be the raw SQL query and nothing else. Do not include any explanations, comments, or markdown.
+2.  **SCHEMA PREFIX REQUIRED:** You MUST prefix the table name with its schema: \`public.flight_schedule\`. Queries without this prefix will fail.
+3.  **READ-ONLY:** The query MUST be a \`SELECT\` statement.
+4.  **CASE-INSENSITIVE SEARCH:** For all string comparisons (e.g., on \`airline_code\`, \`flight_number\`, \`departure_airport_name\`), you MUST use the \`ILIKE\` operator with wildcards (\`%\`).
+5.  **DATE HANDLING:** The current date is ${new Date().toISOString().split('T')[0]}. For date comparisons, you MUST cast the timestamp column to a date: \`DATE(origin_date_time) = 'YYYY-MM-DD'\`.
+6.  **NO GUESSING / UNANSWERABLE QUESTIONS:** If the user's question CANNOT be answered using the provided schema, DO NOT generate a query. Instead, you MUST output the exact text: "UNANSWERABLE".
+7.  **OUTPUT FORMAT:** Your output MUST be the raw SQL query and nothing else. Do not include any explanations, comments, or markdown.
 
 **CONVERSATION HISTORY:**
 ${formattedHistory}
