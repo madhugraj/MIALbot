@@ -9,6 +9,8 @@ import { SendHorizonal, MessageSquarePlus, X, Plus, Mic, Database } from "lucide
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { supabase } from "@/integrations/supabase/client";
+import { FlightSearchForm, FlightSearchFormValues } from "./FlightSearchForm";
+import { format } from "date-fns";
 
 interface Message {
   id: number;
@@ -17,25 +19,18 @@ interface Message {
   generatedSql?: string | null;
 }
 
-const PRE_POPULATED_QUESTIONS = [
-  "What's the status of flight BA209 to London?",
-  "Which gate does flight QF16 depart from?",
-  "Has flight LH463 from Frankfurt arrived?",
-  "Are there any delayed flights to New York?",
-];
-
 const Chatbot: React.FC = () => {
   const messageIdCounter = useRef(0);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: messageIdCounter.current++,
-      text: "Hello! How can I assist you today?",
+      text: "You can search for a flight using the form above, or ask me a question directly.",
       sender: "bot",
     },
   ]);
   const [input, setInput] = useState<string>("");
   const [isBotTyping, setIsBotTyping] = useState<boolean>(false);
-  const [suggestions, setSuggestions] = useState<string[]>(PRE_POPULATED_QUESTIONS);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -46,82 +41,92 @@ const Chatbot: React.FC = () => {
     scrollToBottom();
   }, [messages, isBotTyping]);
 
-  const sendMessage = async (text: string) => {
-    if (text.trim() === "") return;
-
-    setSuggestions([]);
-    const newUserMessage: Message = {
-      id: messageIdCounter.current++,
-      text,
-      sender: "user",
-    };
-    
-    setMessages(prevMessages => [...prevMessages, newUserMessage]);
-    setInput("");
+  const callChatbotAPI = async (body: object) => {
     setIsBotTyping(true);
+    setSuggestions([]);
 
     try {
-      const { data, error } = await supabase.functions.invoke('chatbot-agent', {
-        body: { 
-          user_query: text,
-          history: messages.map(m => ({ text: m.text, sender: m.sender }))
-        },
-      });
+      const { data, error } = await supabase.functions.invoke('chatbot-agent', { body });
 
       if (error) {
-        console.error("Error invoking Edge Function:", error);
-        const botErrorResponse: Message = {
-          id: messageIdCounter.current++,
-          text: "Sorry, I couldn't process your request due to an error.",
-          sender: "bot",
-        };
-        setMessages((prevMessages) => [...prevMessages, botErrorResponse]);
-      } else {
-        const botResponse: Message = {
-          id: messageIdCounter.current++,
-          text: data.response,
-          sender: "bot",
-          generatedSql: data.generatedSql,
-        };
-        setMessages((prevMessages) => [...prevMessages, botResponse]);
-        if (data.suggestions && Array.isArray(data.suggestions) && data.suggestions.length > 0) {
-          setSuggestions(data.suggestions);
-        }
+        throw new Error(`Edge Function Error: ${error.message}`);
       }
-    } catch (fetchError) {
-      console.error("Network or unexpected error:", fetchError);
-      const botNetworkErrorResponse: Message = {
+      
+      const botResponse: Message = {
         id: messageIdCounter.current++,
-        text: "It seems there's a problem connecting. Please try again later.",
+        text: data.response,
+        sender: "bot",
+        generatedSql: data.generatedSql,
+      };
+      setMessages((prevMessages) => [...prevMessages, botResponse]);
+      if (data.suggestions && Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+        setSuggestions(data.suggestions);
+      }
+
+    } catch (e) {
+      console.error("Error calling chatbot API:", e);
+      const errorText = e instanceof Error ? e.message : "An unknown error occurred.";
+      const botErrorResponse: Message = {
+        id: messageIdCounter.current++,
+        text: `Sorry, I couldn't process your request. ${errorText}`,
         sender: "bot",
       };
-      setMessages((prevMessages) => [...prevMessages, botNetworkErrorResponse]);
+      setMessages((prevMessages) => [...prevMessages, botErrorResponse]);
     } finally {
       setIsBotTyping(false);
     }
   };
 
-  const handleSendMessage = () => {
-    sendMessage(input);
+  const handleFormSearch = (searchData: FlightSearchFormValues) => {
+    const searchMessage: Message = {
+      id: messageIdCounter.current++,
+      text: `Searching for Airline: ${searchData.airlineCode || 'any'}, Flight: ${searchData.flightNumber || 'any'}, Date: ${searchData.date ? format(searchData.date, 'PPP') : 'any'}`,
+      sender: 'user',
+    };
+    setMessages(prev => [...prev, searchMessage]);
+    
+    callChatbotAPI({
+      searchParams: {
+        airlineCode: searchData.airlineCode,
+        flightNumber: searchData.flightNumber,
+        date: searchData.date,
+      }
+    });
+  };
+
+  const handleFreeTextSearch = (text: string) => {
+    if (text.trim() === "") return;
+
+    const newUserMessage: Message = {
+      id: messageIdCounter.current++,
+      text,
+      sender: "user",
+    };
+    setMessages(prevMessages => [...prevMessages, newUserMessage]);
+    setInput("");
+
+    callChatbotAPI({
+      user_query: text,
+      history: [...messages, newUserMessage].map(m => ({ text: m.text, sender: m.sender }))
+    });
   };
 
   return (
-    <Card className="w-full max-w-md mx-auto flex flex-col h-[700px] rounded-2xl shadow-2xl bg-white/80 backdrop-blur-sm border-0 overflow-hidden">
+    <Card className="w-full max-w-lg mx-auto flex flex-col h-[80vh] max-h-[800px] rounded-2xl shadow-2xl bg-white/80 backdrop-blur-sm border-0 overflow-hidden">
       <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-purple-500 to-indigo-600"></div>
-      <CardHeader className="pt-6 pb-4 flex flex-row items-center justify-between bg-transparent">
+      <CardHeader className="pt-6 pb-2 flex flex-row items-center justify-between bg-transparent border-b">
         <div className="flex items-center space-x-3">
           <Avatar className="w-10 h-10 ring-2 ring-purple-400 ring-offset-2 ring-offset-white">
             <AvatarImage src="https://github.com/shadcn.png" alt="Mia Avatar" />
             <AvatarFallback>M</AvatarFallback>
           </Avatar>
-          <CardTitle className="text-lg font-semibold text-gray-800">Talk to Mia</CardTitle>
+          <CardTitle className="text-lg font-semibold text-gray-800">MIA Flight Assistant</CardTitle>
         </div>
-        <div className="flex items-center space-x-4">
-            <MessageSquarePlus className="w-5 h-5 text-gray-500 cursor-pointer hover:text-gray-800" />
-            <X className="w-5 h-5 text-gray-500 cursor-pointer hover:text-gray-800" />
-        </div>
+        <X className="w-5 h-5 text-gray-500 cursor-pointer hover:text-gray-800" />
       </CardHeader>
       
+      <FlightSearchForm onSearch={handleFormSearch} isSearching={isBotTyping} />
+
       <CardContent className="flex-1 overflow-hidden p-0 flex flex-col">
         <ScrollArea className="h-full p-6">
           <div className="flex flex-col space-y-1">
@@ -139,7 +144,7 @@ const Chatbot: React.FC = () => {
                   </Avatar>
                 )}
                 <div
-                  className={`p-3 px-4 rounded-2xl max-w-[75%] text-sm font-medium shadow-sm ${
+                  className={`p-3 px-4 rounded-2xl max-w-[85%] text-sm font-medium shadow-sm ${
                     message.sender === "user"
                       ? "bg-violet-100 text-gray-900 rounded-br-lg"
                       : "bg-white text-gray-800 rounded-bl-lg"
@@ -151,12 +156,12 @@ const Chatbot: React.FC = () => {
               {message.sender === 'bot' && message.generatedSql && (
                 <div className="flex justify-start">
                     <div className="w-8 h-8 flex-shrink-0"></div>
-                    <div className="ml-2.5 w-full max-w-[75%]">
+                    <div className="ml-2.5 w-full max-w-[85%]">
                         <Accordion type="single" collapsible className="w-full">
                             <AccordionItem value="item-1" className="border-none">
                                 <AccordionTrigger className="text-xs text-gray-500 hover:no-underline py-1 justify-start gap-1">
                                     <Database className="h-3 w-3" />
-                                    Show generated SQL
+                                    Show technical details
                                 </AccordionTrigger>
                                 <AccordionContent className="mt-1 p-2 bg-gray-100 rounded-md">
                                     <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono"><code>{message.generatedSql}</code></pre>
@@ -188,6 +193,7 @@ const Chatbot: React.FC = () => {
         </ScrollArea>
         {suggestions.length > 0 && !isBotTyping && (
           <div className="p-4 pt-2 border-t border-gray-100">
+            <p className="text-xs text-gray-500 mb-2">Suggested follow-up questions:</p>
             <div className="flex flex-wrap gap-2">
               {suggestions.map((suggestion, index) => (
                 <Button
@@ -195,7 +201,7 @@ const Chatbot: React.FC = () => {
                   variant="outline"
                   size="sm"
                   className="rounded-full text-xs h-auto py-1.5 px-3 bg-white/50 hover:bg-gray-200/70 border-gray-300 text-gray-700"
-                  onClick={() => sendMessage(suggestion)}
+                  onClick={() => handleFreeTextSearch(suggestion)}
                 >
                   {suggestion}
                 </Button>
@@ -208,13 +214,13 @@ const Chatbot: React.FC = () => {
       <CardFooter className="p-3 border-t border-gray-100 bg-transparent">
         <div className="w-full p-2 bg-white/70 rounded-xl shadow-inner">
             <Textarea
-              placeholder="Ask Mia anything..."
+              placeholder="Or ask a general question..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  handleSendMessage();
+                  handleFreeTextSearch(input);
                 }
               }}
               className="w-full bg-transparent border-0 resize-none p-2 focus-visible:ring-0 focus-visible:ring-offset-0"
@@ -229,7 +235,7 @@ const Chatbot: React.FC = () => {
                         <Mic className="w-5 h-5" />
                     </Button>
                 </div>
-                <Button onClick={handleSendMessage} size="icon" className="rounded-full w-10 h-10 p-0 flex items-center justify-center bg-purple-600 hover:bg-purple-700 transition-colors text-white">
+                <Button onClick={() => handleFreeTextSearch(input)} size="icon" className="rounded-full w-10 h-10 p-0 flex items-center justify-center bg-purple-600 hover:bg-purple-700 transition-colors text-white">
                     <SendHorizonal className="h-5 w-5" />
                 </Button>
             </div>
