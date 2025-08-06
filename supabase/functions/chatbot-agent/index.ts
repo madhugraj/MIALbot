@@ -6,7 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Helper to call the Gemini API
 async function callGemini(apiKey, prompt) {
   const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
     method: 'POST',
@@ -33,17 +32,12 @@ async function callGemini(apiKey, prompt) {
   throw new Error("Gemini response did not contain expected content structure.");
 }
 
-
-// Helper to format history
 function formatHistory(history) {
     if (!history || history.length === 0) return "No conversation history yet.";
     return history.map(msg => `${msg.sender === 'user' ? 'User' : 'Assistant'}: ${msg.text}`).join('\n');
 }
 
-// Tool 1: Database Query via Text-to-SQL (Improved)
 async function handleDatabaseQuery(supabase, geminiApiKey, user_query, formattedHistory) {
-  console.log("Inside handleDatabaseQuery (Text-to-SQL)");
-
   const { data: schemaData, error: schemaError } = await supabase
     .from('schema_metadata')
     .select('schema_json')
@@ -56,22 +50,25 @@ async function handleDatabaseQuery(supabase, geminiApiKey, user_query, formatted
   }
   const schemaDefinition = JSON.stringify(schemaData.schema_json, null, 2);
 
-  const sqlGenerationPrompt = `You are a world-class PostgreSQL query generation engine.
-Your sole purpose is to generate a single, read-only SQL query based on a user's question and a provided database schema.
+  const sqlGenerationPrompt = `You are a hyper-literal, no-nonsense PostgreSQL query generation engine. Your ONLY purpose is to generate a single, read-only SQL query based on a user's question and a provided database schema. You must follow all rules to the letter.
 
-**DATABASE SCHEMA:**
+**DATABASE SCHEMA for the 'flight_schedule' table:**
 \`\`\`json
 ${schemaDefinition}
 \`\`\`
 
-**RULES & CONSTRAINTS:**
-1.  **STICK TO THE SCHEMA:** You MUST ONLY use the tables and columns defined in the schema above. DO NOT invent columns or tables. DO NOT use columns that are not listed.
-2.  **READ-ONLY:** The query must be a \`SELECT\` statement.
-3.  **CASE-INSENSITIVE SEARCH:** For string comparisons on columns like \`airline_code\`, \`flight_number\`, \`departure_airport_name\`, and \`arrival_airport_name\`, ALWAYS use the \`ILIKE\` operator with wildcards (\`%\`) to ensure broad, case-insensitive matching.
-4.  **DATE HANDLING:** The current date is ${new Date().toISOString().split('T')[0]}. Use this for any queries related to "today". Cast date/time columns to date for comparison, e.g., \`DATE(origin_date_time) = 'YYYY-MM-DD'\`.
-5.  **RELEVANT COLUMNS:** Select columns that directly answer the user's question. For general status, include key fields like \`operational_status_description\`, \`scheduled_departure_time\`, \`scheduled_arrival_time\`, and \`gate_name\`. Always include \`airline_code\` and \`flight_number\` for identification.
-6.  **NO GUESSING:** If the user's question cannot be answered using the provided schema, DO NOT generate a query. Instead, output the exact text: "UNANSWERABLE".
-7.  **OUTPUT FORMAT:** Your output MUST be the raw SQL query and nothing else. Do not include any explanations, comments, or markdown like \`\`\`sql.
+**CRITICAL RULES:**
+1.  **ABSOLUTE SCHEMA ADHERENCE:** You MUST ONLY use the columns explicitly listed in the schema above. DO NOT use any column that is not in that list. DO NOT invent columns. If a user asks for "price" and there is no "price" column, you cannot answer.
+2.  **READ-ONLY:** The query MUST be a \`SELECT\` statement. No other type of query is permitted.
+3.  **CASE-INSENSITIVE SEARCH:** For all string comparisons (e.g., on \`airline_code\`, \`flight_number\`, \`departure_airport_name\`), you MUST use the \`ILIKE\` operator with wildcards (\`%\`). This is not optional.
+4.  **DATE HANDLING:** The current date is ${new Date().toISOString().split('T')[0]}. For date comparisons, you MUST cast the timestamp column to a date: \`DATE(origin_date_time) = 'YYYY-MM-DD'\`.
+5.  **NO GUESSING / UNANSWERABLE QUESTIONS:** If the user's question CANNOT be answered using the provided schema, DO NOT generate a query. Instead, you MUST output the exact text: "UNANSWERABLE".
+6.  **OUTPUT FORMAT:** Your output MUST be the raw SQL query and nothing else. Do not include any explanations, comments, or markdown like \`\`\`sql.
+
+**EXAMPLE:**
+*   **User Question:** "is flight ua 456 to denver on time?"
+*   **Correct SQL Output:** SELECT operational_status_description, scheduled_departure_time FROM public.flight_schedule WHERE flight_number ILIKE '%456%' AND arrival_airport_name ILIKE '%denver%'
+*   **Incorrect SQL Output:** SELECT status FROM flights WHERE flight_id = 'ua 456' -- (This is WRONG because the table is 'flight_schedule' and the column is 'flight_number', not 'flight_id')
 
 **CONVERSATION HISTORY:**
 ${formattedHistory}
@@ -89,9 +86,7 @@ ${formattedHistory}
       return { response: "I'm sorry, I can't answer that question with the information I have. Could you try asking about flight status, gates, or times?", suggestions: [], generatedSql: generatedSql || "Failed to generate valid SQL." };
   }
 
-  const { data: queryResult, error: queryError } = await supabase.rpc('execute_sql_query', {
-    query_text: generatedSql
-  });
+  const { data: queryResult, error: queryError } = await supabase.rpc('execute_sql_query', { query_text: generatedSql });
 
   if (queryError) {
     console.error('SQL Execution Error:', queryError);
@@ -111,133 +106,19 @@ ${JSON.stringify(queryResult, null, 2)}
 **Your Answer (be conversational and helpful):**`;
     
     const summary = await callGemini(geminiApiKey, summarizationPrompt);
-
-    const suggestionGenerationPrompt = `You are an expert AI assistant that generates relevant follow-up questions for a user inquiring about flight information. Your suggestions MUST be answerable using ONLY the provided database schema.
-
-**Database Schema for 'flight_schedule' table:**
-${schemaDefinition}
-
-**Conversation Context:**
-*   **History:** ${formattedHistory}
-*   **User's Latest Question:** "${user_query}"
-*   **Your Last Answer:** "${summary}"
-*   **Data Used for Answer:** ${JSON.stringify(queryResult, null, 2)}
-
-**CRITICAL INSTRUCTIONS:**
-1.  **Schema-Bound:** Generate questions that can be answered using the columns in the schema.
-2.  **Contextual & Relevant:** The questions should be a natural continuation of the conversation and focus on details NOT already provided in "Your Last Answer".
-3.  **Format:** Return a JSON array of 3-4 short, to-the-point questions. Example: \`["What's the arrival time?", "Which gate is it at?"]\`
-4.  **No Markdown:** Do not include markdown like \`\`\`json.
-
-**Follow-up Suggestions (JSON Array):**`;
-
-    const suggestionsText = await callGemini(geminiApiKey, suggestionGenerationPrompt);
-    let suggestions = [];
-    try {
-        suggestions = JSON.parse(suggestionsText.replace(/```json\n|```/g, '').trim());
-    } catch (e) {
-        console.error("Failed to parse suggestions JSON:", suggestionsText, e);
-        suggestions = [];
-    }
-
-    return { response: summary, suggestions, generatedSql };
+    return { response: summary, suggestions: [], generatedSql };
   }
 
   return { response: `I couldn't find any information for your query. Please check the details and try again.`, suggestions: [], generatedSql };
 }
 
-// Tool 2: General Conversation Logic
-async function handleGeneralConversation(geminiApiKey, user_query, formattedHistory) {
-  console.log("Inside handleGeneralConversation");
-  const prompt = `You are Mia, a friendly and helpful AI assistant for Miami International Airport.
-Respond to the user's latest message in a brief, helpful, and conversational way, using the history for context.
-
-**Conversation History:**
-${formattedHistory}
-**User's Latest Message:** "${user_query}"
-**Your Response:`;
-  const response = await callGemini(geminiApiKey, prompt);
-  return { response, suggestions: ["What's the status of flight AA123?", "Where is the Admirals Club?", "How long is the security wait?"], generatedSql: null };
-}
-
-// New Tool: Structured Flight Search using RPC
-async function handleStructuredSearch(supabase, geminiApiKey, searchParams) {
-  console.log("Inside handleStructuredSearch (RPC)");
-  const { airlineCode, flightNumber, date } = searchParams;
-
-  const { data: queryResult, error: queryError } = await supabase.rpc('get_flight_info', {
-    p_airline_code: airlineCode || null,
-    p_flight_number: flightNumber || null,
-    p_origin_date: date ? new Date(date).toISOString().split('T')[0] : null
-  });
-
-  if (queryError) {
-    console.error('RPC Execution Error:', queryError);
-    return { response: `I'm sorry, I ran into a database error while searching.`, suggestions: [], generatedSql: `RPC Call: get_flight_info with params: ${JSON.stringify(searchParams)}` };
-  }
-
-  if (queryResult && Array.isArray(queryResult) && queryResult.length > 0) {
-    const summarizationPrompt = `You are Mia, a helpful flight assistant. Your task is to provide a clear and direct summary of the flight information found.
-
-**User's Search Criteria:**
-${JSON.stringify(searchParams)}
-
-**Database Results (JSON):**
-\`\`\`json
-${JSON.stringify(queryResult, null, 2)}
-\`\`\`
-**Your Answer (be conversational and helpful, summarize the key information from the result):**`;
-    
-    const summary = await callGemini(geminiApiKey, summarizationPrompt);
-
-    const { data: schemaData } = await supabase
-      .from('schema_metadata')
-      .select('schema_json')
-      .eq('table_name', 'flight_schedule')
-      .single();
-    const schemaDefinition = JSON.stringify(schemaData?.schema_json, null, 2) || "{}";
-
-    const suggestionGenerationPrompt = `You are an expert AI assistant that generates relevant follow-up questions for a user inquiring about flight information. Your suggestions MUST be answerable using ONLY the provided database schema.
-
-**Database Schema for 'flight_schedule' table:**
-${schemaDefinition}
-
-**Conversation Context:**
-*   **User's Search:** ${JSON.stringify(searchParams)}
-*   **Your Last Answer:** "${summary}"
-*   **Data Used for Answer:** ${JSON.stringify(queryResult, null, 2)}
-
-**CRITICAL INSTRUCTIONS:**
-1.  **Schema-Bound:** Generate questions that can be answered using the columns in the schema.
-2.  **Contextual & Relevant:** The questions should be a natural continuation of the conversation and focus on details NOT already provided in "Your Last Answer".
-3.  **Format:** Return a JSON array of 3-4 short, to-the-point questions. Example: \`["What's the arrival time?", "Which gate is it at?"]\`
-4.  **No Markdown:** Do not include markdown like \`\`\`json.
-
-**Follow-up Suggestions (JSON Array):**`;
-
-    const suggestionsText = await callGemini(geminiApiKey, suggestionGenerationPrompt);
-    let suggestions = [];
-    try {
-        suggestions = JSON.parse(suggestionsText.replace(/```json\n|```/g, '').trim());
-    } catch (e) {
-        console.error("Failed to parse suggestions JSON:", suggestionsText, e);
-        suggestions = [];
-    }
-
-    return { response: summary, suggestions, generatedSql: `RPC: get_flight_info(${JSON.stringify(searchParams, null, 2)})` };
-  }
-
-  return { response: `I couldn't find any flight information for your search. Please check the details and try again.`, suggestions: [], generatedSql: `RPC Call: get_flight_info with params: ${JSON.stringify(searchParams)}` };
-}
-
-// Main Server Logic (The Agent/Router)
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { user_query, history, searchParams } = await req.json();
+    const { user_query, history } = await req.json();
     const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
     if (!geminiApiKey) throw new Error('GEMINI_API_KEY is not set.');
 
@@ -246,35 +127,8 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
     
-    let result;
-
-    if (searchParams) {
-      console.log("Routing to STRUCTURED_SEARCH tool.");
-      result = await handleStructuredSearch(supabase, geminiApiKey, searchParams);
-    } else {
-      const formattedHistory = formatHistory(history);
-      const intentClassificationPrompt = `You are a router agent. Your job is to classify the user's latest intent.
-Respond with one of the following tool names:
-- 'DATABASE_QUERY': If the user is asking about flights, delays, terminals, gates, airlines, arrival/departure times, or any specific airport information that would be in a database.
-- 'GENERAL_CONVERSATION': If the user is making small talk, greeting, saying thank you, or asking a question not related to specific flight/airport data.
-
-**Conversation History:**
-${formattedHistory}
-**User's Latest Message:** "${user_query}"
-**Tool:`;
-
-      const rawIntent = await callGemini(geminiApiKey, intentClassificationPrompt);
-      const intent = rawIntent.trim().toUpperCase().replace(/['".]/g, "");
-      console.log("Cleaned Intent:", intent);
-
-      if (intent.includes('DATABASE_QUERY')) {
-        console.log("Routing to DATABASE_QUERY tool.");
-        result = await handleDatabaseQuery(supabase, geminiApiKey, user_query, formattedHistory);
-      } else {
-        console.log("Routing to GENERAL_CONVERSATION tool.");
-        result = await handleGeneralConversation(geminiApiKey, user_query, formattedHistory);
-      }
-    }
+    const formattedHistory = formatHistory(history);
+    const result = await handleDatabaseQuery(supabase, geminiApiKey, user_query, formattedHistory);
 
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
