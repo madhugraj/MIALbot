@@ -26,6 +26,7 @@ const Chatbot: React.FC = () => {
   ]);
   const [input, setInput] = useState<string>("");
   const [isBotTyping, setIsBotTyping] = useState<boolean>(false);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -39,6 +40,7 @@ const Chatbot: React.FC = () => {
   const sendMessage = async (text: string) => {
     if (text.trim() === "") return;
 
+    setSuggestions([]); // Clear previous suggestions
     const newUserMessage: Message = {
       id: messageIdCounter.current++,
       text,
@@ -72,6 +74,9 @@ const Chatbot: React.FC = () => {
           sender: "bot",
         };
         setMessages((prevMessages) => [...prevMessages, botResponse]);
+        if (data.suggestions && Array.isArray(data.suggestions)) {
+          setSuggestions(data.suggestions);
+        }
       }
     } catch (fetchError) {
       console.error("Network or unexpected error:", fetchError);
@@ -107,7 +112,7 @@ const Chatbot: React.FC = () => {
         </div>
       </CardHeader>
       
-      <CardContent className="flex-1 overflow-hidden p-0">
+      <CardContent className="flex-1 overflow-hidden p-0 flex flex-col">
         <ScrollArea className="h-full p-6">
           <div className="flex flex-col space-y-4">
             {messages.map((message) => (
@@ -152,6 +157,23 @@ const Chatbot: React.FC = () => {
             <div ref={messagesEndRef} />
           </div>
         </ScrollArea>
+        {suggestions.length > 0 && !isBotTyping && (
+          <div className="p-4 pt-2 border-t border-gray-100">
+            <div className="flex flex-wrap gap-2">
+              {suggestions.map((suggestion, index) => (
+                <Button
+                  key={index}
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full text-xs h-auto py-1.5 px-3 bg-white/50 hover:bg-gray-200/70 border-gray-300 text-gray-700"
+                  onClick={() => sendMessage(suggestion)}
+                >
+                  {suggestion}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
       </CardContent>
 
       <CardFooter className="p-3 border-t border-gray-100 bg-transparent">
