@@ -17,6 +17,7 @@ interface Message {
   sender: "user" | "bot";
   generatedSql?: string | null;
   followUpOptions?: string[];
+  followUpSuggestions?: string[];
 }
 
 const Chatbot: React.FC = () => {
@@ -72,6 +73,7 @@ const Chatbot: React.FC = () => {
         sender: "bot",
         generatedSql: data.generatedSql,
         followUpOptions: data.requiresFollowUp ? data.followUpOptions : undefined,
+        followUpSuggestions: data.followUpSuggestions,
       };
       setMessages((prevMessages) => [...prevMessages, botResponse]);
 
@@ -152,6 +154,25 @@ const Chatbot: React.FC = () => {
                                 onClick={() => handleFollowUpSelect(option)}
                             >
                                 {option}
+                            </Button>
+                        ))}
+                    </div>
+                </div>
+              )}
+
+              {message.sender === 'bot' && !message.followUpOptions && message.followUpSuggestions && message.followUpSuggestions.length > 0 && (
+                <div className="flex justify-start">
+                    <div className="w-8 h-8 flex-shrink-0"></div>
+                    <div className="ml-2.5 mt-2 flex flex-wrap gap-2">
+                        {message.followUpSuggestions.map((suggestion, index) => (
+                            <Button
+                                key={index}
+                                variant="outline"
+                                size="sm"
+                                className="bg-white/80 hover:bg-white"
+                                onClick={() => handleFollowUpSelect(suggestion)}
+                            >
+                                {suggestion}
                             </Button>
                         ))}
                     </div>

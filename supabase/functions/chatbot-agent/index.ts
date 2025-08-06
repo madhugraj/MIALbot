@@ -156,14 +156,43 @@ ${resultData}
 **Your Answer (be conversational and helpful):**`;
     
     const summary = await callGemini(geminiApiKey, summarizationPrompt);
-    console.log("Gemini Summarization Response:", summary);
 
     if (!summary || summary.trim() === "") {
         console.error("Summarization failed: Gemini returned an empty response.");
         return { response: "I found the information, but I had trouble summarizing it. Please try rephrasing your question.", generatedSql };
     }
 
-    return { response: summary, generatedSql };
+    const followUpPrompt = `Based on the user's question and the data provided, generate 2-3 relevant, short follow-up questions a user might ask next. The questions should be distinct from the original question. Output them as a JSON array of strings. If no logical follow-up questions can be generated, return an empty array [].
+
+**User's Question:** "${user_query}"
+**Data Provided:** ${resultData}
+
+**Example 1:**
+User Question: "What's the status of flight BA2490?"
+Data: {"operational_status_description": "On Time", "remark_free_text": null}
+Your Output: ["What is the gate number?", "What is the scheduled arrival time?"]
+
+**Example 2:**
+User Question: "What is the gate for flight DL456?"
+Data: {"gate_name": "A12"}
+Your Output: ["What is the boarding time?", "Is the flight on time?"]
+
+Your Output (JSON array of strings):`;
+
+    const followUpResponse = await callGemini(geminiApiKey, followUpPrompt);
+    let followUpSuggestions = [];
+    try {
+        const cleanedResponse = followUpResponse.replace(/```json\n|```/g, '').trim();
+        const parsed = JSON.parse(cleanedResponse);
+        if (Array.isArray(parsed)) {
+            followUpSuggestions = parsed;
+        }
+    } catch (e) {
+        console.error("Failed to parse follow-up suggestions:", e);
+        followUpSuggestions = [];
+    }
+
+    return { response: summary, generatedSql, followUpSuggestions };
   }
 
   return { response: `I couldn't find any information for your query. Please check the details and try again.`, generatedSql };
