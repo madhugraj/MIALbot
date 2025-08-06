@@ -70,6 +70,7 @@ ${schemaDefinition}
     *   Use \`scheduled_departure_time\` or \`scheduled_arrival_time\` for scheduled times.
     *   Use \`estimated_departure_time\` or \`estimated_arrival_time\` for current estimated times, which include delays.
     *   Use \`actual_departure_time\` or \`actual_arrival_time\` for times after the event has occurred.
+*   **Calculations**: You can perform simple calculations like time differences directly in the query (e.g., \`estimated_arrival_time - estimated_departure_time\`). Use appropriate aliases for calculated columns.
 
 **EXAMPLES:**
 *   **User Question:** "What is the status of flight BA2490?"
@@ -78,6 +79,8 @@ ${schemaDefinition}
     **SQL Query:** \`SELECT estimated_arrival_time, departure_airport_name FROM public.flight_schedule WHERE flight_number ILIKE '%920%' AND DATE(origin_date_time) = '2024-07-12'\`
 *   **User Question:** "Is flight DL456 delayed?"
     **SQL Query:** \`SELECT operational_status_description, delay_duration FROM public.flight_schedule WHERE flight_number ILIKE '%DL456%' AND DATE(origin_date_time) = '${today}'\`
+*   **User Question:** "What is the travel duration for flight AA100?"
+    **SQL Query:** \`SELECT (estimated_arrival_time - estimated_departure_time) AS travel_duration FROM public.flight_schedule WHERE flight_number ILIKE '%AA100%' AND DATE(origin_date_time) = '${today}'\`
 
 **CRITICAL RULES:**
 1.  **ABSOLUTE SCHEMA ADHERENCE:** You MUST ONLY use the columns explicitly listed in the schema and explanations above. DO NOT use any column that is not in that list. DO NOT invent columns.
