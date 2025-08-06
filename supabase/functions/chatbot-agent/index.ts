@@ -49,6 +49,7 @@ async function handleTextToSQLQuery(supabase, geminiApiKey, user_query, formatte
     return { response: "I'm sorry, I can't access my knowledge base right now. Please try again later.", generatedSql: null };
   }
   const schemaDefinition = JSON.stringify(schemaData.schema_json, null, 2);
+  const today = new Date().toISOString().split('T')[0];
 
   const sqlGenerationPrompt = `You are a hyper-literal, no-nonsense PostgreSQL query generation engine. Your ONLY purpose is to generate a single, read-only SQL query based on a user's question and a provided database schema. You must follow all rules to the letter.
 
@@ -60,7 +61,7 @@ ${schemaDefinition}
 **COLUMN EXPLANATIONS & USAGE:**
 *   \`operational_status_description\`: **USE THIS FOR FLIGHT STATUS.** This is the primary field for human-readable flight status (e.g., "On Time", "Delayed", "Cancelled").
 *   \`arrival_airport_name\`: The name of the arrival airport. **USE THIS to answer questions about the flight's "destination" or "arrival location".**
-*   \`departure_airport_name\`: The name of the departure airport.
+*   \`departure_airport_name\`: The name of the departure airport. **USE THIS to answer questions about where a flight is "coming from".**
 *   \`gate_name\`: The specific gate for the flight (e.g., "A12").
 *   \`terminal_name\`: The terminal where the gate is located (e.g., "Terminal 1").
 *   \`delay_duration\`: The length of any delay. Use this to answer questions about how long a flight is delayed.
@@ -70,12 +71,20 @@ ${schemaDefinition}
     *   Use \`estimated_departure_time\` or \`estimated_arrival_time\` for current estimated times, which include delays.
     *   Use \`actual_departure_time\` or \`actual_arrival_time\` for times after the event has occurred.
 
+**EXAMPLES:**
+*   **User Question:** "What is the status of flight BA2490?"
+    **SQL Query:** \`SELECT operational_status_description, remark_free_text FROM public.flight_schedule WHERE flight_number ILIKE '%BA2490%' AND DATE(origin_date_time) = '${today}'\`
+*   **User Question:** "When is flight 920 arriving on july 12 and where is it coming from?"
+    **SQL Query:** \`SELECT estimated_arrival_time, departure_airport_name FROM public.flight_schedule WHERE flight_number ILIKE '%920%' AND DATE(origin_date_time) = '2024-07-12'\`
+*   **User Question:** "Is flight DL456 delayed?"
+    **SQL Query:** \`SELECT operational_status_description, delay_duration FROM public.flight_schedule WHERE flight_number ILIKE '%DL456%' AND DATE(origin_date_time) = '${today}'\`
+
 **CRITICAL RULES:**
 1.  **ABSOLUTE SCHEMA ADHERENCE:** You MUST ONLY use the columns explicitly listed in the schema and explanations above. DO NOT use any column that is not in that list. DO NOT invent columns.
 2.  **SCHEMA PREFIX REQUIRED:** You MUST prefix the table name with its schema: \`public.flight_schedule\`. Queries without this prefix will fail.
 3.  **READ-ONLY:** The query MUST be a \`SELECT\` statement.
 4.  **CASE-INSENSITIVE SEARCH:** For all string comparisons (e.g., on \`airline_code\`, \`flight_number\`, \`departure_airport_name\`), you MUST use the \`ILIKE\` operator with wildcards (\`%\`).
-5.  **DATE HANDLING:** The current date is ${new Date().toISOString().split('T')[0]}. For date comparisons, you MUST cast the timestamp column to a date: \`DATE(origin_date_time) = 'YYYY-MM-DD'\`.
+5.  **DATE HANDLING:** The current date is ${today}. For date comparisons, you MUST cast the timestamp column to a date: \`DATE(origin_date_time) = 'YYYY-MM-DD'\`. If the user does not provide a year, assume the current year.
 6.  **NO GUESSING / UNANSWERABLE QUESTIONS:** If the user's question CANNOT be answered using the provided schema, DO NOT generate a query. Instead, you MUST output the exact text: "UNANSWERABLE".
 7.  **OUTPUT FORMAT:** Your output MUST be the raw SQL query and nothing else. Do not include any explanations, comments, or markdown.
 
@@ -102,7 +111,7 @@ ${formattedHistory}
     return { response: `I'm sorry, I ran into a database error.`, generatedSql };
   }
 
-  if (queryResult && Array.isArray(queryResult) && queryResult.length > 0) {
+  if (queryResult && Array.isArray(queryResult) && query_result.length > 0) {
     const summarizationPrompt = `You are Mia, a helpful flight assistant. Your task is to provide a clear and direct answer to the user's question based on the database results and conversation history.
 
 **Conversation History:**
