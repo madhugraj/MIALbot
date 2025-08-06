@@ -133,16 +133,25 @@ ${formattedHistory}
 
   if (queryResult && Array.isArray(queryResult) && queryResult.length > 0) {
     const firstResult = queryResult[0];
-    const resultValue = firstResult[Object.keys(firstResult)[0]];
+    const resultData = JSON.stringify(firstResult);
 
-    const summarizationPrompt = `You are a helpful flight assistant. Convert the following data into a natural, conversational sentence to answer the user's question.
+    const summarizationPrompt = `You are Mia, a helpful flight assistant. Your task is to provide a clear and direct answer to the user's question based on the JSON data provided.
 
-- User's question: "${user_query}"
-- Data to answer question: "${resultValue}"
+**CRITICAL RULES:**
+1.  **Analyze the User's Question:** Understand what the user is asking for (e.g., status, gate, duration).
+2.  **Analyze the JSON Data:** Look at the key-value pairs in the JSON to find the answer.
+3.  **Handle Multiple Fields:** If the JSON contains multiple relevant fields (like a status and a remark), combine them into a single, coherent sentence.
+4.  **Handle Missing/Null Values:** If a value in the JSON is 'null' or an empty string, you MUST state that the specific piece of information is not available. Do not ignore it. If all values are null, state that you couldn't find any details.
 
-CRITICAL: If the data is 'null' or empty, you MUST respond that the information is not available for this flight.
+**Conversation History:**
+${formattedHistory}
+**User's Latest Question:** "${user_query}"
+**Database Result (JSON):**
+\`\`\`json
+${resultData}
+\`\`\`
 
-Your response:`;
+**Your Answer (be conversational and helpful):**`;
     
     const summary = await callGemini(geminiApiKey, summarizationPrompt);
     console.log("Gemini Summarization Response:", summary);
