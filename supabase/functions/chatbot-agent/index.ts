@@ -37,7 +37,9 @@ function formatHistory(history) {
     return history.map(msg => `${msg.sender === 'user' ? 'User' : 'Assistant'}: ${msg.text}`).join('\n');
 }
 
-async function handleDatabaseQuery(supabase, geminiApiKey, user_query, formattedHistory) {
+async function handleTextToSQLQuery(supabase, geminiApiKey, user_query, formattedHistory) {
+  console.log("Inside handleTextToSQLQuery");
+
   const { data: schemaData, error: schemaError } = await supabase
     .from('schema_metadata')
     .select('schema_json')
@@ -46,7 +48,7 @@ async function handleDatabaseQuery(supabase, geminiApiKey, user_query, formatted
 
   if (schemaError || !schemaData) {
     console.error('Schema Fetch Error:', schemaError);
-    return { response: "I'm sorry, I can't access my knowledge base right now. Please try again later.", suggestions: [], generatedSql: null };
+    return { response: "I'm sorry, I can't access my knowledge base right now. Please try again later.", generatedSql: null };
   }
   const schemaDefinition = JSON.stringify(schemaData.schema_json, null, 2);
 
@@ -83,14 +85,14 @@ ${formattedHistory}
 
   if (!generatedSql || generatedSql.toUpperCase() === 'UNANSWERABLE' || !generatedSql.toUpperCase().startsWith('SELECT')) {
       console.error("SQL Generation Failed or Unanswerable. Response:", generatedSql);
-      return { response: "I'm sorry, I can't answer that question with the information I have. Could you try asking about flight status, gates, or times?", suggestions: [], generatedSql: generatedSql || "Failed to generate valid SQL." };
+      return { response: "I'm sorry, I can't answer that question with the information I have. Could you try asking about flight status, gates, or times?", generatedSql: generatedSql || "Failed to generate valid SQL." };
   }
 
   const { data: queryResult, error: queryError } = await supabase.rpc('execute_sql_query', { query_text: generatedSql });
 
   if (queryError) {
     console.error('SQL Execution Error:', queryError);
-    return { response: `I'm sorry, I ran into a database error.`, suggestions: [], generatedSql };
+    return { response: `I'm sorry, I ran into a database error.`, generatedSql };
   }
 
   if (queryResult && Array.isArray(queryResult) && queryResult.length > 0) {
@@ -106,10 +108,50 @@ ${JSON.stringify(queryResult, null, 2)}
 **Your Answer (be conversational and helpful):**`;
     
     const summary = await callGemini(geminiApiKey, summarizationPrompt);
-    return { response: summary, suggestions: [], generatedSql };
+    return { response: summary, generatedSql };
   }
 
-  return { response: `I couldn't find any information for your query. Please check the details and try again.`, suggestions: [], generatedSql };
+  return { response: `I couldn't find any information for your query. Please check the details and try again.`, generatedSql };
+}
+
+async function handleStructuredSearch(supabase, geminiApiKey, searchParams) {
+  console.log("Inside handleStructuredSearch (RPC)");
+  const { airlineCode, flightNumber, date } = searchParams;
+
+  const { data: queryResult, error: queryError } = await supabase.rpc('get_flight_info', {
+    p_airline_code: airlineCode,
+    p_flight_number: flightNumber,
+    p_origin_date: date ? new Date(date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+  });
+
+  const rpcDetails = `RPC: get_flight_info(${JSON.stringify({
+    p_airline_code: airlineCode,
+    p_flight_number: flightNumber,
+    p_origin_date: date ? new Date(date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+  }, null, 2)})`;
+
+  if (queryError) {
+    console.error('RPC Execution Error:', queryError);
+    return { response: `I'm sorry, I ran into a database error while searching.`, generatedSql: rpcDetails };
+  }
+
+  if (queryResult && Array.isArray(queryResult) && queryResult.length > 0) {
+    const summarizationPrompt = `You are Mia, a helpful flight assistant. Your task is to provide a clear and direct summary of the flight information found.
+
+**User's Search Criteria:**
+${JSON.stringify(searchParams)}
+
+**Database Results (JSON):**
+\`\`\`json
+${JSON.stringify(queryResult, null, 2)}
+\`\`\`
+**Your Answer (be conversational and helpful, summarize the key information from the result):**`;
+    
+    const summary = await callGemini(geminiApiKey, summarizationPrompt);
+    return { response: summary, generatedSql: rpcDetails };
+  }
+
+  return { response: `I couldn't find any flight information for your search. Please check the details and try again.`, generatedSql: rpcDetails };
 }
 
 serve(async (req) => {
@@ -118,7 +160,7 @@ serve(async (req) => {
   }
 
   try {
-    const { user_query, history } = await req.json();
+    const { user_query, history, searchParams } = await req.json();
     const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
     if (!geminiApiKey) throw new Error('GEMINI_API_KEY is not set.');
 
@@ -127,8 +169,16 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
     
-    const formattedHistory = formatHistory(history);
-    const result = await handleDatabaseQuery(supabase, geminiApiKey, user_query, formattedHistory);
+    let result;
+
+    if (searchParams) {
+      console.log("Routing to STRUCTURED_SEARCH tool.");
+      result = await handleStructuredSearch(supabase, geminiApiKey, searchParams);
+    } else {
+      console.log("Routing to TEXT_TO_SQL tool.");
+      const formattedHistory = formatHistory(history);
+      result = await handleTextToSQLQuery(supabase, geminiApiKey, user_query, formattedHistory);
+    }
 
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

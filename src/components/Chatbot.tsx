@@ -9,6 +9,8 @@ import { SendHorizonal, X, Plus, Mic, Database } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { supabase } from "@/integrations/supabase/client";
+import { FlightSearchForm, FlightSearchFormValues } from "./FlightSearchForm";
+import { format } from "date-fns";
 
 interface Message {
   id: number;
@@ -17,25 +19,17 @@ interface Message {
   generatedSql?: string | null;
 }
 
-const PRE_POPULATED_QUESTIONS = [
-  "What's the status of flight BA209 to London?",
-  "Which gate does flight QF16 depart from?",
-  "Has flight LH463 from Frankfurt arrived?",
-  "Are there any delayed flights to New York?",
-];
-
 const Chatbot: React.FC = () => {
   const messageIdCounter = useRef(0);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: messageIdCounter.current++,
-      text: "Hello! I'm Mia, your flight assistant. How can I help you today? You can ask me a question or try one of the suggestions below.",
+      text: "Hello! I'm Mia. Please use the form to search for a specific flight, or ask me a general question below.",
       sender: "bot",
     },
   ]);
   const [input, setInput] = useState<string>("");
   const [isBotTyping, setIsBotTyping] = useState<boolean>(false);
-  const [suggestions, setSuggestions] = useState<string[]>(PRE_POPULATED_QUESTIONS);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -46,27 +40,11 @@ const Chatbot: React.FC = () => {
     scrollToBottom();
   }, [messages, isBotTyping]);
 
-  const handleSendMessage = async (text: string) => {
-    if (text.trim() === "") return;
-
-    const newUserMessage: Message = {
-      id: messageIdCounter.current++,
-      text,
-      sender: "user",
-    };
-    
-    setMessages(prevMessages => [...prevMessages, newUserMessage]);
-    setInput("");
+  const callChatbotAPI = async (body: object) => {
     setIsBotTyping(true);
-    setSuggestions([]);
 
     try {
-      const { data, error } = await supabase.functions.invoke('chatbot-agent', {
-        body: { 
-          user_query: text,
-          history: [...messages, newUserMessage].map(m => ({ text: m.text, sender: m.sender }))
-        },
-      });
+      const { data, error } = await supabase.functions.invoke('chatbot-agent', { body });
 
       if (error) {
         throw new Error(`Edge Function Error: ${error.message}`);
@@ -79,9 +57,6 @@ const Chatbot: React.FC = () => {
         generatedSql: data.generatedSql,
       };
       setMessages((prevMessages) => [...prevMessages, botResponse]);
-      if (data.suggestions && Array.isArray(data.suggestions) && data.suggestions.length > 0) {
-        setSuggestions(data.suggestions);
-      }
 
     } catch (e) {
       console.error("Error calling chatbot API:", e);
@@ -95,6 +70,40 @@ const Chatbot: React.FC = () => {
     } finally {
       setIsBotTyping(false);
     }
+  };
+
+  const handleFormSearch = (searchData: FlightSearchFormValues) => {
+    const searchMessage: Message = {
+      id: messageIdCounter.current++,
+      text: `Searching for flight ${searchData.airlineCode} ${searchData.flightNumber}...`,
+      sender: 'user',
+    };
+    setMessages(prev => [...prev, searchMessage]);
+    
+    callChatbotAPI({
+      searchParams: {
+        airlineCode: searchData.airlineCode,
+        flightNumber: searchData.flightNumber,
+        date: searchData.date,
+      }
+    });
+  };
+
+  const handleFreeTextSearch = (text: string) => {
+    if (text.trim() === "") return;
+
+    const newUserMessage: Message = {
+      id: messageIdCounter.current++,
+      text,
+      sender: "user",
+    };
+    setMessages(prevMessages => [...prevMessages, newUserMessage]);
+    setInput("");
+
+    callChatbotAPI({
+      user_query: text,
+      history: [...messages, newUserMessage].map(m => ({ text: m.text, sender: m.sender }))
+    });
   };
 
   return (
@@ -111,6 +120,8 @@ const Chatbot: React.FC = () => {
         <X className="w-5 h-5 text-gray-500 cursor-pointer hover:text-gray-800" />
       </CardHeader>
       
+      <FlightSearchForm onSearch={handleFormSearch} isSearching={isBotTyping} />
+
       <CardContent className="flex-1 overflow-hidden p-0 flex flex-col">
         <ScrollArea className="h-full p-6">
           <div className="flex flex-col space-y-1">
@@ -175,23 +186,6 @@ const Chatbot: React.FC = () => {
             <div ref={messagesEndRef} />
           </div>
         </ScrollArea>
-        {suggestions.length > 0 && !isBotTyping && (
-          <div className="p-4 pt-2 border-t border-gray-100">
-            <div className="flex flex-wrap gap-2">
-              {suggestions.map((suggestion, index) => (
-                <Button
-                  key={index}
-                  variant="outline"
-                  size="sm"
-                  className="rounded-full text-xs h-auto py-1.5 px-3 bg-white/50 hover:bg-gray-200/70 border-gray-300 text-gray-700"
-                  onClick={() => handleSendMessage(suggestion)}
-                >
-                  {suggestion}
-                </Button>
-              ))}
-            </div>
-          </div>
-        )}
       </CardContent>
 
       <CardFooter className="p-3 border-t border-gray-100 bg-transparent">
@@ -203,7 +197,7 @@ const Chatbot: React.FC = () => {
               onKeyPress={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  handleSendMessage(input);
+                  handleFreeTextSearch(input);
                 }
               }}
               className="w-full bg-transparent border-0 resize-none p-2 focus-visible:ring-0 focus-visible:ring-offset-0"
@@ -218,7 +212,7 @@ const Chatbot: React.FC = () => {
                         <Mic className="w-5 h-5" />
                     </Button>
                 </div>
-                <Button onClick={() => handleSendMessage(input)} size="icon" className="rounded-full w-10 h-10 p-0 flex items-center justify-center bg-purple-600 hover:bg-purple-700 transition-colors text-white">
+                <Button onClick={() => handleFreeTextSearch(input)} size="icon" className="rounded-full w-10 h-10 p-0 flex items-center justify-center bg-purple-600 hover:bg-purple-700 transition-colors text-white">
                     <SendHorizonal className="h-5 w-5" />
                 </Button>
             </div>
