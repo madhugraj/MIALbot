@@ -37,7 +37,8 @@ function formatHistory(history) {
     return history.map(msg => `${msg.sender === 'user' ? 'User' : 'Assistant'}: ${msg.text}`).join('\n');
 }
 
-async function handleTextToSQLQuery(supabase, geminiApiKey, user_query, formattedHistory) {
+async function handleTextToSQLQuery(supabase, geminiApiKey, user_query, history) {
+  const formattedHistory = formatHistory(history);
   const { data: schemaData, error: schemaError } = await supabase
     .from('schema_metadata')
     .select('schema_json')
@@ -52,42 +53,49 @@ async function handleTextToSQLQuery(supabase, geminiApiKey, user_query, formatte
 
   const sqlGenerationPrompt = `You are a hyper-literal, no-nonsense PostgreSQL query generation engine. Your ONLY purpose is to generate a single, read-only SQL query or a JSON object for clarification. You must follow all rules to the letter.
 
+**INSTRUCTIONS:**
+1.  Your primary goal is to understand the user's complete intent by analyzing the entire conversation provided.
+2.  The "CONVERSATION HISTORY" provides the full context of the interaction.
+3.  The "LATEST USER MESSAGE" is the user's most recent input. This message might be a full question, or it could be a small piece of information (like a date or a flight number) that answers a previous question from you, the assistant.
+4.  **You MUST synthesize the information from the entire "CONVERSATION HISTORY" with the "LATEST USER MESSAGE" to form a complete, unambiguous request before generating any SQL.**
+5.  After understanding the complete request, generate a response based on the rules below.
+
 **DATABASE SCHEMA for the 'flight_schedule' table:**
 \`\`\`json
 ${schemaDefinition}
 \`\`\`
 
 **CRITICAL RULES:**
-1.  **CONTEXTUAL AWARENESS:** You MUST use the entire **CONVERSATION HISTORY** to understand the user's intent. If the user provides a piece of information (like a date) that answers a question you previously asked, you MUST combine it with the previous context to form a complete query.
-2.  **AMBIGUITY DETECTION:** If a user's question is ambiguous because a date is missing for a date-sensitive query (like status, duration, gate), you MUST NOT guess the date. Instead, your entire output MUST be a single JSON object with this exact structure: \`{"requires_clarification": true, "query_for_options": "SELECT DISTINCT TO_CHAR(origin_date_time, 'YYYY-MM-DD') AS option FROM public.flight_schedule WHERE flight_number ILIKE '%<flight_number>%' ORDER BY option DESC"}\`. Replace \`<flight_number>\` with the flight number from the user's query.
-3.  **NORMAL OPERATION:** If the question is unambiguous (e.g., a date is provided, or a date was provided in a previous turn), generate the SQL query as normal. Do not wrap it in JSON.
-4.  **SCHEMA ADHERENCE:** You MUST ONLY use the columns explicitly listed in the schema.
-5.  **DURATION CALCULATION:** To calculate travel duration, you MUST calculate the difference between arrival and departure times. Use \`COALESCE\` to ensure a value is present, preferring \`actual\` times but falling back to \`estimated\` times. The formula MUST be: \`(COALESE(actual_arrival_time, estimated_arrival_time) - COALESCE(actual_departure_time, estimated_departure_time))\`. This produces a human-readable interval. **DO NOT use \`EXTRACT\` or other complex functions.**
-6.  **READ-ONLY:** The query MUST be a \`SELECT\` statement.
-7.  **CASE-INSENSITIVE SEARCH:** For all string comparisons, you MUST use the \`ILIKE\` operator with wildcards (\`%\`).
-8.  **DATE HANDLING:** When a date is provided, you MUST cast the timestamp column to a date: \`DATE(origin_date_time) = 'YYYY-MM-DD'\`.
-9.  **UNANSWERABLE QUESTIONS:** If a question cannot be answered, output the exact text: "UNANSWERABLE".
-10. **OUTPUT FORMAT:** Your output must be either the raw SQL query OR the JSON object for clarification. Nothing else.
+1.  **CONTEXTUAL AWARENESS (MANDATORY):** If the "LATEST USER MESSAGE" is a fragment (e.g., just a date), you MUST look at the preceding conversation in the "CONVERSATION HISTORY" to find the rest of the context (e.g., the flight number) and construct a complete query.
+2.  **AMBIGUITY DETECTION:** If a user's question is ambiguous because a date is missing for a date-sensitive query (like status, duration, gate), you MUST NOT guess the date. Instead, your entire output MUST be a single JSON object with this exact structure: \`{"requires_clarification": true, "query_for_options": "SELECT DISTINCT TO_CHAR(origin_date_time, 'YYYY-MM-DD') AS option FROM public.flight_schedule WHERE flight_number ILIKE '%<flight_number>%' ORDER BY option DESC"}\`. Replace \`<flight_number>\` with the flight number from the user's query or history.
+3.  **READ-ONLY:** The query MUST be a \`SELECT\` statement.
+4.  **CASE-INSENSITIVE SEARCH:** For all string comparisons, you MUST use the \`ILIKE\` operator with wildcards (\`%\`).
+5.  **DATE HANDLING:** When a date is provided, you MUST cast the timestamp column to a date: \`DATE(origin_date_time) = 'YYYY-MM-DD'\`.
+6.  **UNANSWERABLE QUESTIONS:** If a question cannot be answered, output the exact text: "UNANSWERABLE".
+7.  **OUTPUT FORMAT:** Your output must be either the raw SQL query OR the JSON object for clarification. Nothing else.
 
-**EXAMPLES:**
-*   **User Question:** "What is the status of flight BA2490 on July 12 2024?" (Unambiguous)
-    **SQL Query:** \`SELECT operational_status_description, remark_free_text FROM public.flight_schedule WHERE flight_number ILIKE '%BA2490%' AND DATE(origin_date_time) = '2024-07-12'\`
-*   **Conversation History:**
-    User: "What is the travel duration for flight AA100?"
-    Assistant: "I found several dates for that flight. Which one are you interested in?"
-    **User Question:** "2024-07-12"
-    **SQL Query:** \`SELECT (COALESCE(actual_arrival_time, estimated_arrival_time) - COALESCE(actual_departure_time, estimated_departure_time)) AS travel_duration FROM public.flight_schedule WHERE flight_number ILIKE '%AA100%' AND DATE(origin_date_time) = '2024-07-12'\`
+**EXAMPLE OF CONTEXTUAL AWARENESS:**
+*   **CONVERSATION HISTORY:**
+    User: What is the travel duration for flight AA100?
+    Assistant: I found several dates for that flight. Which one are you interested in?
+*   **LATEST USER MESSAGE:** "2024-07-12"
+*   **CORRECT SQL (Your Output):** \`SELECT (COALESCE(actual_arrival_time, estimated_arrival_time) - COALESCE(actual_departure_time, estimated_departure_time)) AS travel_duration FROM public.flight_schedule WHERE flight_number ILIKE '%AA100%' AND DATE(origin_date_time) = '2024-07-12'\`
+
+---
+**ANALYZE THE FOLLOWING CONVERSATION:**
 
 **CONVERSATION HISTORY:**
 ${formattedHistory}
 
-**USER'S QUESTION:**
+**LATEST USER MESSAGE:**
 "${user_query}"
 
 **YOUR RESPONSE (SQL or JSON):**`;
 
-  const geminiResponse = (await callGemini(geminiApiKey, sqlGenerationPrompt)).replace(/```json\n|```|```sql\n/g, '').trim();
-  console.log("Gemini Raw Response:", geminiResponse);
+  console.log("Sending prompt to Gemini for SQL generation...");
+  const geminiResponseText = await callGemini(geminiApiKey, sqlGenerationPrompt);
+  const geminiResponse = geminiResponseText.replace(/```json\n|```|```sql\n/g, '').trim();
+  console.log("Gemini Raw SQL/JSON Response:", geminiResponse);
 
   let parsedResponse;
   try {
@@ -227,8 +235,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
     
-    const formattedHistory = formatHistory(history);
-    const result = await handleTextToSQLQuery(supabase, geminiApiKey, user_query, formattedHistory);
+    const result = await handleTextToSQLQuery(supabase, geminiApiKey, user_query, history);
 
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
