@@ -57,8 +57,19 @@ async function handleTextToSQLQuery(supabase, geminiApiKey, user_query, formatte
 ${schemaDefinition}
 \`\`\`
 
+**COLUMN EXPLANATIONS & USAGE:**
+*   \`operational_status_description\`: **USE THIS FOR FLIGHT STATUS.** This is the primary field for human-readable flight status (e.g., "On Time", "Delayed", "Cancelled").
+*   \`gate_name\`: The specific gate for the flight (e.g., "A12").
+*   \`terminal_name\`: The terminal where the gate is located (e.g., "Terminal 1").
+*   \`delay_duration\`: The length of any delay. Use this to answer questions about how long a flight is delayed.
+*   \`remark_free_text\`: Provides additional context or reasons for the flight's status (e.g., "Delayed due to weather").
+*   **Time Fields**:
+    *   Use \`scheduled_departure_time\` or \`scheduled_arrival_time\` for scheduled times.
+    *   Use \`estimated_departure_time\` or \`estimated_arrival_time\` for current estimated times, which include delays.
+    *   Use \`actual_departure_time\` or \`actual_arrival_time\` for times after the event has occurred.
+
 **CRITICAL RULES:**
-1.  **ABSOLUTE SCHEMA ADHERENCE:** You MUST ONLY use the columns explicitly listed in the schema above. DO NOT use any column that is not in that list. DO NOT invent columns.
+1.  **ABSOLUTE SCHEMA ADHERENCE:** You MUST ONLY use the columns explicitly listed in the schema and explanations above. DO NOT use any column that is not in that list. DO NOT invent columns.
 2.  **SCHEMA PREFIX REQUIRED:** You MUST prefix the table name with its schema: \`public.flight_schedule\`. Queries without this prefix will fail.
 3.  **READ-ONLY:** The query MUST be a \`SELECT\` statement.
 4.  **CASE-INSENSITIVE SEARCH:** For all string comparisons (e.g., on \`airline_code\`, \`flight_number\`, \`departure_airport_name\`), you MUST use the \`ILIKE\` operator with wildcards (\`%\`).
