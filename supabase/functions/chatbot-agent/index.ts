@@ -111,8 +111,15 @@ ${formattedHistory}
     };
   }
 
-  const generatedSql = geminiResponse;
-  if (!generatedSql || generatedSql.toUpperCase() === 'UNANSWERABLE' || !generatedSql.toUpperCase().startsWith('SELECT')) {
+  let generatedSql = '';
+  const selectIndex = geminiResponse.toUpperCase().indexOf('SELECT');
+  if (selectIndex > -1) {
+    generatedSql = geminiResponse.substring(selectIndex);
+  } else {
+    generatedSql = geminiResponse;
+  }
+
+  if (!generatedSql || generatedSql.toUpperCase().trim() === 'UNANSWERABLE' || !generatedSql.toUpperCase().startsWith('SELECT')) {
       console.error("SQL Generation Failed or Unanswerable. Response:", generatedSql);
       return { response: "I'm sorry, I can't answer that question with the information I have.", generatedSql: generatedSql || "Failed to generate valid SQL." };
   }
