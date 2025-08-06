@@ -18,10 +18,10 @@ interface Message {
 }
 
 const PRE_POPULATED_QUESTIONS = [
-  "Is flight AA 100 on time?",
-  "What is the status of flight DL 200?",
-  "Which gate is flight UA 300 departing from?",
-  "Where can I find baggage claim?",
+  "What's the status of flight BA209 to London?",
+  "Which gate does flight QF16 depart from?",
+  "Has flight LH463 from Frankfurt arrived?",
+  "Are there any delayed flights to New York?",
 ];
 
 const Chatbot: React.FC = () => {
