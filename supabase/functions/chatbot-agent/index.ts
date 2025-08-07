@@ -151,10 +151,11 @@ Columns: \`airline_code\`, \`flight_number\`, \`flight_type\`, \`operational_sta
 
 **RULES:**
 1.  You MUST only generate a single \`SELECT\` query.
-2.  A flight is delayed if \`delay_duration > '0 minutes'::interval\`.
-3.  Use \`DATE(origin_date_time)\` for date-based queries. Today's date is ${today}.
-4.  For "constantly delayed" or "regularly late" flights, count flights with delays, group by flight number, and order by the count descending.
-5.  For questions about delay frequency (e.g., "out of how many days did it get delayed?"), provide two counts: total unique operating days and unique days with a delay. Use a query like: \`SELECT COUNT(DISTINCT DATE(origin_date_time)) as total_days, COUNT(DISTINCT CASE WHEN delay_duration > '0 minutes'::interval THEN DATE(origin_date_time) END) as delayed_days FROM flight_schedule WHERE flight_number = '...';\`
+2.  Always use the \`public\` schema prefix for tables (e.g., \`public.flight_schedule\`).
+3.  A flight is delayed if \`delay_duration > '0 minutes'::interval\`.
+4.  Use \`DATE(origin_date_time)\` for date-based queries. Today's date is ${today}.
+5.  For "constantly delayed" or "regularly late" flights, count flights with delays, group by flight number, and order by the count descending.
+6.  For questions about delay frequency (e.g., "out of how many days did it get delayed?"), provide two counts: total unique operating days and unique days with a delay. Use a query like: \`SELECT COUNT(DISTINCT DATE(origin_date_time)) as total_days, COUNT(DISTINCT CASE WHEN delay_duration > '0 minutes'::interval THEN DATE(origin_date_time) END) as delayed_days FROM public.flight_schedule WHERE flight_number = '...';\`
 
 **USER'S QUESTION:**
 "${user_query}"
