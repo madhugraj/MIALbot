@@ -99,3 +99,21 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer components {
+  .markdown-table table {
+    @apply w-full my-2 text-sm border-collapse;
+  }
+  .markdown-table thead {
+    @apply bg-gray-100;
+  }
+  .markdown-table th {
+    @apply p-2 font-semibold text-left border border-gray-200;
+  }
+  .markdown-table td {
+    @apply p-2 border border-gray-200;
+  }
+  .markdown-table tbody tr:nth-child(odd) {
+    @apply bg-gray-50;
+  }
+}

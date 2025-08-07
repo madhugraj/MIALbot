@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -142,7 +143,9 @@ const Chatbot: React.FC = () => {
                       : "bg-white text-gray-800 rounded-bl-lg"
                   }`}
                 >
-                  {message.text}
+                  <div className="markdown-table">
+                    <ReactMarkdown>{message.text}</ReactMarkdown>
+                  </div>
                 </div>
               </div>
 
