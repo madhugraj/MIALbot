@@ -79,8 +79,22 @@ ${formattedHistory}
   const paramsJson = await callGemini(parameterExtractionPrompt);
   const params = JSON.parse(paramsJson);
 
-  if (params.requires_clarification) {
-    return { response: `I can help with that. Which date are you interested in?` };
+  if (params.requires_clarification && params.missing_parameter === 'date' && (params.airline_code || params.flight_number)) {
+    const { data: dates, error: datesError } = await supabase.rpc('get_available_dates_for_flight', {
+        p_airline_code: params.airline_code || null,
+        p_flight_number: params.flight_number || null,
+    });
+
+    if (datesError || !dates || dates.length === 0) {
+        return { response: `I can help with that, but I need a specific date. Which date are you interested in?` };
+    }
+
+    return {
+        response: `I found a few dates for that flight. Please select one to proceed:`,
+        followUpOptions: dates,
+    };
+  } else if (params.requires_clarification) {
+      return { response: `I can help with that, but I'm missing some information. Could you please clarify your request?` };
   }
 
   const { data, error } = await supabase.rpc('get_flight_info', {
