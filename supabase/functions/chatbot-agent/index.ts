@@ -91,6 +91,7 @@ ${formattedHistory}
 
     return {
         response: `I found a few dates for that flight. Please select one to proceed:`,
+        requiresFollowUp: true,
         followUpOptions: dates,
     };
   } else if (params.requires_clarification) {
@@ -231,8 +232,9 @@ serve(async (req) => {
 
 **CRITICAL RULES FOR CLASSIFICATION:**
 1.  **Default to Lookup:** If the user provides a specific flight number in their LATEST message, the intent is almost always \`SPECIFIC_FLIGHT_LOOKUP\`.
-2.  **Identify Analytics:** If the user's LATEST message asks "how many", "which flights", "what is the most", "list all", or uses other aggregate terms, the intent is \`ANALYTICAL_QUERY\`, even if the conversation history contains tables of specific flights.
-3.  **!!! MOST IMPORTANT RULE - CONTINUATION !!!**
+2.  **Identify Analytics:** If the user's LATEST message asks "how many", "which flights", "what is the most", "list all", or uses other aggregate terms, the intent is \`ANALYTICAL_QUERY\`.
+3.  **Analytical Follow-up:** If the assistant's last message provided an analytical answer (e.g., a count, an average), and the user's latest message asks a clarifying question about that analysis (e.g., "what was the total?", "for which airline?", "out of how many?"), the intent is \`ANALYTICAL_QUERY\`. Do not misclassify this as \`SPECIFIC_FLIGHT_LOOKUP\` just because the original subject (like a flight number) is still in context.
+4.  **!!! MOST IMPORTANT RULE - CONTINUATION !!!**
     If the assistant's LAST message was an analytical summary that ended with an offer for more details (e.g., "...A full list is available if you'd like to see it."), AND the user's LATEST message is a simple affirmation like "Yes", "Sure", "Show me", "Ok", "Please do", then you MUST classify the intent as \`ANALYTICAL_CONTINUATION\`. This is NOT a new query. It is a direct continuation of the previous turn.
 
 **CONVERSATION HISTORY:**
