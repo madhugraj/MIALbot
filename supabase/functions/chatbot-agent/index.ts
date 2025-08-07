@@ -55,7 +55,7 @@ async function handleQuery(supabase, geminiApiKey, user_query, history) {
 *   \`origin_date\`: (Optional) The date of the flight in 'YYYY-MM-DD' format. Today's date is ${today}. If the user says "today", use this date.
 
 **AMBIGUITY & CLARIFICATION:**
-*   If the user asks a question that requires a date (like "what is the status" or "what is the gate") but does not provide one and it's not in the history, you MUST ask for it. To do this, output a JSON object with this exact structure: \`{"requires_clarification": true, "missing_parameter": "date"}\`.
+*   If the user asks a question that requires a date (like "what is the status" or "what is the gate") but does not provide one and it's not in the history, you MUST ask for it. To do this, output a JSON object with this exact structure: \`{"requires_clarification": true, "missing_parameter": "date", "flight_number": "<the_extracted_flight_number>", "airline_code": "<the_extracted_airline_code>"}\`. You MUST include the flight number and airline code if you were able to extract them.
 *   If you cannot extract a flight number or airline code from the conversation, do not guess.
 
 **EXAMPLE 1:**
@@ -68,7 +68,7 @@ async function handleQuery(supabase, geminiApiKey, user_query, history) {
 
 **EXAMPLE 3:**
 *   User Message: "Is flight DL456 on time?"
-*   Your Output: \`{"requires_clarification": true, "missing_parameter": "date"}\`
+*   Your Output: \`{"requires_clarification": true, "missing_parameter": "date", "flight_number": "456", "airline_code": "DL"}\`
 
 ---
 **ANALYZE THE FOLLOWING CONVERSATION:**
@@ -95,10 +95,37 @@ ${formattedHistory}
   }
 
   if (params.requires_clarification) {
+    if (params.flight_number) {
+        const { data: flights, error: flightsError } = await supabase.rpc('get_flight_info', {
+            p_airline_code: params.airline_code || null,
+            p_flight_number: params.flight_number,
+            p_origin_date: null
+        });
+
+        if (flightsError || !flights || flights.length === 0) {
+            console.error("Error fetching dates for clarification:", flightsError);
+            return {
+                response: `I can help with that, but I couldn't find any scheduled dates for flight ${params.flight_number}. Please check the flight number.`,
+                requiresFollowUp: false,
+            };
+        }
+        
+        const distinctDates = [...new Set(flights.map(flight => flight.scheduled_departure_time.split('T')[0]))]
+            .sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+
+        if (distinctDates.length > 0) {
+            return {
+                response: `I found a few dates for that flight. Which one are you interested in?`,
+                requiresFollowUp: true,
+                followUpOptions: distinctDates
+            };
+        }
+    }
+    // Fallback if no flight number or no dates found
     return {
       response: `I can help with that. Which date are you interested in?`,
       requiresFollowUp: true,
-      followUpOptions: [] // We can't suggest dates without a flight number
+      followUpOptions: []
     };
   }
 
