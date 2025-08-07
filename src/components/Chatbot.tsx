@@ -51,8 +51,8 @@ const Chatbot: React.FC = () => {
       sender: "user",
     };
     
-    const currentMessages = messages;
-    setMessages(prevMessages => [...prevMessages, newUserMessage]);
+    const currentMessages = [...messages, newUserMessage];
+    setMessages(currentMessages);
     setInput("");
     setIsBotTyping(true);
 
@@ -60,7 +60,11 @@ const Chatbot: React.FC = () => {
       const { data, error } = await supabase.functions.invoke('chatbot-agent', {
         body: { 
           user_query: text,
-          history: currentMessages.map(m => ({ text: m.text, sender: m.sender }))
+          history: messages.map(m => ({ 
+            text: m.text, 
+            sender: m.sender,
+            generatedSql: m.generatedSql || null
+          }))
         },
       });
 

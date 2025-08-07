@@ -74,7 +74,6 @@ ${formattedHistory}
   const params = JSON.parse(paramsJson);
 
   if (params.requires_clarification) {
-    // This part can be expanded to suggest dates if needed
     return { response: `I can help with that. Which date are you interested in?` };
   }
 
@@ -85,7 +84,6 @@ ${formattedHistory}
   });
 
   if (error || !data || data.length === 0) {
-    console.error('RPC Error or no data:', error);
     return { response: `I couldn't find any information for your query. Please check the details and try again.` };
   }
 
@@ -115,9 +113,19 @@ ${resultData}
   };
 }
 
-async function handleAnalyticalQuery(user_query) {
-  const today = new Date().toISOString().split('T')[0];
-  const textToSqlPrompt = `You are a PostgreSQL expert. Write a single, valid SQL SELECT query to answer the user's analytical question about flight data.
+async function handleAnalyticalQuery(user_query, history) {
+  const lastBotMessage = history.filter(m => m.sender === 'bot').pop();
+  const isSimpleAffirmation = ['yes', 'sure', 'ok', 'show me', 'please', 'yes please'].includes(user_query.toLowerCase().trim().replace(/[.!?]/g, ''));
+
+  let sql_query;
+  let isContinuation = false;
+
+  if (isSimpleAffirmation && lastBotMessage && lastBotMessage.generatedSql && lastBotMessage.generatedSql.startsWith('SELECT')) {
+    sql_query = lastBotMessage.generatedSql;
+    isContinuation = true;
+  } else {
+    const today = new Date().toISOString().split('T')[0];
+    const textToSqlPrompt = `You are a PostgreSQL expert. Write a single, valid SQL SELECT query to answer the user's analytical question about flight data.
 
 **DATABASE SCHEMA:**
 Table: \`public.flight_schedule\`
@@ -133,9 +141,10 @@ Columns: \`airline_code\`, \`flight_number\`, \`flight_type\`, \`operational_sta
 "${user_query}"
 
 **YOUR RESPONSE (JSON object with a single "sql_query" key):**`;
-
-  const sqlJson = await callGemini(textToSqlPrompt);
-  const { sql_query } = JSON.parse(sqlJson);
+    const sqlJson = await callGemini(textToSqlPrompt);
+    const parsedSql = JSON.parse(sqlJson);
+    sql_query = parsedSql.sql_query;
+  }
 
   if (!sql_query) {
     return { response: "I wasn't able to construct a query for that question. Please try rephrasing it." };
@@ -148,7 +157,18 @@ Columns: \`airline_code\`, \`flight_number\`, \`flight_type\`, \`operational_sta
     return { response: `I'm sorry, I ran into a database error while analyzing the data.`, generatedSql: sql_query };
   }
 
-  const summarizationPrompt = `You are Mia, a helpful flight assistant. Provide a clear, natural language answer based on the user's question and the data returned from the database.
+  let summarizationPrompt;
+  if (isContinuation) {
+    summarizationPrompt = `You are Mia, a helpful flight assistant. The user has asked for the full list of data from a previous query. Format the provided JSON data into a clear, readable, and comprehensive list. Do not summarize. Present all the data. Use markdown for formatting if it helps (e.g., lists, bolding).
+
+**DATABASE RESULT (JSON):**
+\`\`\`json
+${JSON.stringify(data)}
+\`\`\`
+
+**YOUR RESPONSE (a single, conversational string presenting the full list):**`;
+  } else {
+    summarizationPrompt = `You are Mia, a helpful flight assistant. Provide a clear, natural language answer based on the user's question and the data returned from the database.
 
 **USER'S QUESTION:**
 "${user_query}"
@@ -164,6 +184,7 @@ ${JSON.stringify(data)}
 \`\`\`
 
 **YOUR RESPONSE (a single, conversational string):**`;
+  }
 
   const summary = await callGemini(summarizationPrompt);
   return { response: summary, generatedSql: sql_query };
@@ -178,10 +199,14 @@ serve(async (req) => {
     const { user_query, history } = await req.json();
     const formattedHistory = formatHistory(history);
 
-    const intentClassificationPrompt = `You are an intent classification model. Determine if a user's request is a \`SPECIFIC_FLIGHT_LOOKUP\` or an \`ANALYTICAL_QUERY\`.
+    const intentClassificationPrompt = `You are an intent classification model. Your job is to determine the user's intent based on their latest message AND the conversation history.
 
-- \`SPECIFIC_FLIGHT_LOOKUP\`: Asks for details about a single, specific flight (e.g., "status of BA2490?", "what is the gate?"). Usually contains a flight number.
+**INTENTS:**
+- \`SPECIFIC_FLIGHT_LOOKUP\`: Asks for details about a single, specific flight (e.g., "status of BA2490?", "what is the gate?").
 - \`ANALYTICAL_QUERY\`: Requires counting, aggregating, or analyzing multiple flights (e.g., "how many flights are delayed?", "which airline has the most flights?").
+
+**CRITICAL RULE FOR CONTEXT:**
+If the assistant's last message was an analytical summary that ended with an offer for more details (e.g., "A full list is available..."), and the user's latest message is a simple affirmation (e.g., "Yes", "Sure", "Show me"), you MUST classify the intent as \`ANALYTICAL_QUERY\`. This is a continuation of the previous analysis.
 
 **CONVERSATION HISTORY:**
 ${formattedHistory}
@@ -196,7 +221,7 @@ ${formattedHistory}
 
     let result;
     if (intent === 'ANALYTICAL_QUERY') {
-      result = await handleAnalyticalQuery(user_query);
+      result = await handleAnalyticalQuery(user_query, history);
     } else {
       result = await handleSpecificFlightQuery(user_query, history);
     }
