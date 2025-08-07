@@ -124,7 +124,6 @@ ${formattedHistory}
             };
         }
     }
-    // Fallback if no flight number or no dates found
     return {
       response: `I can help with that. Which date are you interested in?`,
       requiresFollowUp: true,
@@ -152,32 +151,67 @@ ${formattedHistory}
   }
 
   const resultData = JSON.stringify(queryResult[0]);
-  const summarizationPrompt = `You are Mia, a helpful flight assistant. Your task is to provide a clear and direct answer to the user's question based on the JSON data provided.
+  const summarizationPrompt = `You are Mia, a helpful flight assistant. Your primary goal is to provide a direct and concise answer to the user's latest question using the provided database information, and then offer relevant follow-up suggestions.
 
-**CRITICAL RULES:**
-1.  Analyze the User's Question to understand their intent.
-2.  Analyze the JSON Data to find the answer.
-3.  If a value in the JSON is 'null' or an empty string, state that the information is not available. Do not ignore it.
-4.  If the entire JSON object is empty or contains only null values, state that you couldn't find any details for that flight.
+**CRITICAL INSTRUCTIONS:**
+1.  **Identify the User's Core Question:** Look at the "User's Latest Question" and determine the specific piece of information they are asking for (e.g., "status", "gate", "is it international?", "is it delayed?").
+2.  **Formulate the Answer:** Find the answer in the "Database Result (JSON)" and create a direct, conversational sentence.
+3.  **Handle Missing Information:** If the JSON data does not contain the answer, you MUST state that the information is not available.
+4.  **Create Follow-up Suggestions:** Based on the *other* available data in the JSON, create a list of 2-3 short, relevant questions the user might ask next.
+5.  **Output Format:** Your entire output MUST be a single JSON object with two keys: \`answer\` (a string) and \`suggestions\` (an array of strings).
+
+**EXAMPLE 1:**
+*   User's Question: "What is the gate for flight UA456?"
+*   Database Result: \`{"gate_name": "C32", "terminal_name": "1", "operational_status_description": "On Time"}\`
+*   Your Output:
+    \`\`\`json
+    {
+      "answer": "The gate for flight UA456 is C32.",
+      "suggestions": ["What is the terminal?", "What is the flight status?"]
+    }
+    \`\`\`
+
+**EXAMPLE 2:**
+*   User's Question: "Is flight BA288 international?"
+*   Database Result: \`{"flight_type": "International", "gate_name": "A10"}\`
+*   Your Output:
+    \`\`\`json
+    {
+      "answer": "Yes, flight BA288 is an international flight.",
+      "suggestions": ["What is the gate number?"]
+    }
+    \`\`\`
+
+---
+**EXECUTE YOUR TASK:**
 
 **Conversation History:**
 ${formattedHistory}
+
 **User's Latest Question:** "${user_query}"
+
 **Database Result (JSON):**
 \`\`\`json
 ${resultData}
 \`\`\`
 
-**Your Answer (be conversational and helpful):**`;
+**Your Response (JSON object only):**`;
     
-  const summary = await callGemini(geminiApiKey, summarizationPrompt);
+  const summaryResponseText = await callGemini(geminiApiKey, summarizationPrompt);
+  const summaryResponse = summaryResponseText.replace(/```json\n|```/g, '').trim();
 
-  if (!summary || summary.trim() === "") {
-      console.error("Summarization failed: Gemini returned an empty response.");
-      return { response: "I found the information, but I had trouble summarizing it." };
+  try {
+    const summaryJson = JSON.parse(summaryResponse);
+    return { 
+      response: summaryJson.answer, 
+      followUpSuggestions: summaryJson.suggestions,
+      generatedSql: `RPC: get_flight_info, Params: ${JSON.stringify(params)}` 
+    };
+  } catch (e) {
+    console.error("Failed to parse summary from Gemini:", e);
+    // Fallback to just sending the raw text if JSON parsing fails
+    return { response: summaryResponseText };
   }
-
-  return { response: summary, generatedSql: `RPC: get_flight_info, Params: ${JSON.stringify(params)}` };
 }
 
 serve(async (req) => {
