@@ -153,7 +153,8 @@ Columns: \`airline_code\`, \`flight_number\`, \`flight_type\`, \`operational_sta
 1.  You MUST only generate a single \`SELECT\` query.
 2.  A flight is delayed if \`delay_duration > '0 minutes'::interval\`.
 3.  Use \`DATE(origin_date_time)\` for date-based queries. Today's date is ${today}.
-4.  For "constantly delayed" flights, count flights with delays, group by flight number, and order by the count descending.
+4.  For "constantly delayed" or "regularly late" flights, count flights with delays, group by flight number, and order by the count descending.
+5.  For questions about delay frequency (e.g., "out of how many days did it get delayed?"), provide two counts: total unique operating days and unique days with a delay. Use a query like: \`SELECT COUNT(DISTINCT DATE(origin_date_time)) as total_days, COUNT(DISTINCT CASE WHEN delay_duration > '0 minutes'::interval THEN DATE(origin_date_time) END) as delayed_days FROM flight_schedule WHERE flight_number = '...';\`
 
 **USER'S QUESTION:**
 "${user_query}"
@@ -226,16 +227,18 @@ serve(async (req) => {
     const intentClassificationPrompt = `You are an expert intent classification model. Your ONLY job is to determine the user's intent based on their latest message AND the full conversation history.
 
 **INTENTS:**
-- \`SPECIFIC_FLIGHT_LOOKUP\`: Asks for details about a single, specific flight (e.g., "status of BA2490?", "what is the gate for my flight?").
-- \`ANALYTICAL_QUERY\`: Requires counting, aggregating, or analyzing multiple flights (e.g., "how many flights are delayed?", "which airline has the most flights?", "list all flights to JFK").
-- \`ANALYTICAL_CONTINUATION\`: The user is responding to the assistant's previous analytical summary. This is triggered by simple affirmations.
+- \`SPECIFIC_FLIGHT_LOOKUP\`: Asks for a simple fact about a single flight on a specific day (e.g., "status of BA2490?", "what is the gate for my flight?").
+- \`ANALYTICAL_QUERY\`: Requires counting, aggregating, or analyzing multiple flights or a single flight over time (e.g., "how many flights are delayed?", "is flight 131 regularly late?").
+- \`ANALYTICAL_CONTINUATION\`: The user is responding to the assistant's previous analytical summary with a simple affirmation (e.g., "yes", "show me").
 
 **CRITICAL RULES FOR CLASSIFICATION:**
-1.  **Default to Lookup:** If the user provides a specific flight number in their LATEST message, the intent is almost always \`SPECIFIC_FLIGHT_LOOKUP\`.
-2.  **Identify Analytics:** If the user's LATEST message asks "how many", "which flights", "what is the most", "list all", or uses other aggregate terms, the intent is \`ANALYTICAL_QUERY\`.
-3.  **Analytical Follow-up:** If the assistant's last message provided an analytical answer (e.g., a count, an average), and the user's latest message asks a clarifying question about that analysis (e.g., "what was the total?", "for which airline?", "out of how many?"), the intent is \`ANALYTICAL_QUERY\`. Do not misclassify this as \`SPECIFIC_FLIGHT_LOOKUP\` just because the original subject (like a flight number) is still in context.
+1.  **Distinguish Lookup vs. Analysis:** A question with a flight number is NOT automatically a lookup.
+    - **Lookup:** Asks for a simple, singular piece of information for a specific day. Example: "What is the status of flight 131 today?"
+    - **Analysis:** Asks about patterns, trends, or frequencies over time. Keywords like "regularly", "often", "usually", "how many times", "what is the trend" indicate an \`ANALYTICAL_QUERY\`. Example: "Is flight 131 regularly late?"
+2.  **Identify Analytics:** If the user's LATEST message asks "how many", "which flights", "what is the most", "list all", or uses other aggregate or trend-based terms, the intent is \`ANALYTICAL_QUERY\`.
+3.  **Analytical Follow-up:** If the assistant's last message provided an analytical answer (e.g., a count, an average), and the user's latest message asks a clarifying question about that analysis (e.g., "what was the total?", "for which airline?", "out of how many?"), the intent is \`ANALYTICAL_QUERY\`.
 4.  **!!! MOST IMPORTANT RULE - CONTINUATION !!!**
-    If the assistant's LAST message was an analytical summary that ended with an offer for more details (e.g., "...A full list is available if you'd like to see it."), AND the user's LATEST message is a simple affirmation like "Yes", "Sure", "Show me", "Ok", "Please do", then you MUST classify the intent as \`ANALYTICAL_CONTINUATION\`. This is NOT a new query. It is a direct continuation of the previous turn.
+    If the assistant's LAST message was an analytical summary that ended with an offer for more details (e.g., "...A full list is available if you'd like to see it."), AND the user's LATEST message is a simple affirmation like "Yes", "Sure", "Show me", "Ok", "Please do", then you MUST classify the intent as \`ANALYTICAL_CONTINUATION\`.
 
 **CONVERSATION HISTORY:**
 ${formattedHistory}
