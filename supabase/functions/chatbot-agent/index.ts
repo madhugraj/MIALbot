@@ -41,37 +41,37 @@ async function handleQuery(supabase, geminiApiKey, user_query, history) {
   const formattedHistory = formatHistory(history);
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
-  const parameterExtractionPrompt = `You are a highly intelligent entity extraction engine. Your sole purpose is to analyze a user's conversation and extract specific parameters for a flight information system.
+  const parameterExtractionPrompt = `You are a stateful and context-aware entity extraction engine. Your primary job is to understand an ongoing conversation about flights and maintain the context across multiple turns.
 
-**PRIMARY GOAL:**
-Your main goal is to understand the user's complete intent by analyzing the entire conversation history and the latest user message. You must synthesize these two pieces of information to form a complete picture of what the user wants.
+**CORE PRINCIPLE: CONTEXT PERSISTENCE**
+The user will ask multiple questions about the SAME flight. Once a flight's context (airline_code, flight_number, origin_date) is established, you MUST carry that context forward for all subsequent questions. Do NOT lose the context. Assume the user is still talking about the same flight unless they explicitly provide a new flight number.
 
 **INSTRUCTIONS:**
-1.  **Synthesize Context:** If the "LATEST USER MESSAGE" is a fragment (e.g., just a date like "today" or "2024-08-15"), you MUST look at the "CONVERSATION HISTORY" to find the rest of the context (e.g., the flight number the user asked about previously).
-2.  **Extract Parameters:** Your goal is to extract up to three parameters: \`airline_code\`, \`flight_number\`, and \`origin_date\`.
-3.  **Output Format:** Your entire output MUST be a single JSON object.
+1.  **Analyze Full History:** Read the entire "CONVERSATION HISTORY" and the "LATEST USER MESSAGE".
+2.  **Establish Context:** Identify the primary flight context (airline_code, flight_number, origin_date) from the history.
+3.  **Apply to New Message:** Interpret the "LATEST USER MESSAGE" using the established context. If the user asks "and what's the gate?", you must use the flight number and date from the previous turns.
+4.  **Output Format:** Your entire output MUST be a single JSON object.
 
 **PARAMETER RULES:**
-*   \`airline_code\`: (Optional) A two-character IATA airline code (e.g., "AA", "DL", "UA").
-*   \`flight_number\`: (Optional) The number of the flight. It might be part of a string like "AA123".
-*   \`origin_date\`: (Optional) The date of the flight in 'YYYY-MM-DD' format. Today's date is ${today}. If the user says "today", use this date.
+*   \`airline_code\`: (String) Two-character IATA code.
+*   \`flight_number\`: (String) The flight number.
+*   \`origin_date\`: (String) Date in 'YYYY-MM-DD' format. Today is ${today}.
 
-**AMBIGUITY & CLARIFICATION RULES:**
-*   **When to Ask:** If a user asks a question that requires a date (like "what is the status" or "what is the gate") but does not provide one AND it's not in the history, you MUST ask for it.
-*   **How to Ask:** To ask for clarification, output a JSON object with this exact structure: \`{"requires_clarification": true, "missing_parameter": "date", "flight_number": "<the_extracted_flight_number>", "airline_code": "<the_extracted_airline_code>"}\`. You MUST include the flight number and airline code if you were able to extract them.
-*   **LOOP PREVENTION (CRITICAL):** If the conversation history shows that the assistant just asked for a date, and the user's latest message appears to be that date, you MUST NOT output the clarification JSON again. Instead, you must combine the date from the user with the flight number from the history and output the complete parameter JSON.
+**CLARIFICATION & LOOP PREVENTION:**
+*   **Missing Info:** If a required parameter (like \`origin_date\`) is missing from the start and cannot be found in the history, you MUST ask for it by outputting: \`{"requires_clarification": true, "missing_parameter": "date", "flight_number": "<flight_number>", "airline_code": "<airline_code>"}\`.
+*   **Anti-Loop:** If you have just asked for a date, and the user's latest message is the answer, you MUST combine it with the previous context and output the full parameter JSON. DO NOT ask for clarification again.
 
-**EXAMPLE 1 (Full Query):**
-*   User Message: "What is the status of flight AA123 on 2024-08-15?"
-*   Your Output: \`{"airline_code": "AA", "flight_number": "123", "origin_date": "2024-08-15"}\`
-
-**EXAMPLE 2 (Clarification Loop - THE CORRECT BEHAVIOR):**
-*   **Turn 1 - User:** "Gate for BA2490?"
+**EXAMPLE SCENARIO (Correct Behavior):**
+*   **Turn 1 - User:** "Status for flight BA2490?"
 *   **Turn 1 - Your Output:** \`{"requires_clarification": true, "missing_parameter": "date", "flight_number": "2490", "airline_code": "BA"}\`
 *   ---
-*   **Turn 2 - History:** "User: Gate for BA2490? \\n Assistant: I found a few dates for that flight. Which one are you interested in?"
-*   **Turn 2 - User:** "2024-09-20"
-*   **Turn 2 - Your Output:** \`{"airline_code": "BA", "flight_number": "2490", "origin_date": "2024-09-20"}\`
+*   **Turn 2 - History:** ...Assistant asks for date...
+*   **Turn 2 - User:** "Today"
+*   **Turn 2 - Your Output:** \`{"airline_code": "BA", "flight_number": "2490", "origin_date": "${today}"}\`
+*   ---
+*   **Turn 3 - History:** ...Assistant gives status for BA2490 today...
+*   **Turn 3 - User:** "What's the gate?"
+*   **Turn 3 - Your Output (CRITICAL):** \`{"airline_code": "BA", "flight_number": "2490", "origin_date": "${today}"}\`
 
 ---
 **ANALYZE THE FOLLOWING CONVERSATION:**
@@ -239,7 +239,7 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Edge Function Catch Block Error:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: "Sorry, I've run into an unexpected error." }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 500,
     });
