@@ -105,15 +105,15 @@
     @apply w-full my-2 text-sm border-collapse;
   }
   .markdown-table thead {
-    @apply bg-gray-100;
+    @apply bg-slate-100 dark:bg-slate-800;
   }
   .markdown-table th {
-    @apply p-2 font-semibold text-left border border-gray-200;
+    @apply p-2 font-semibold text-left border border-slate-200 dark:border-slate-700;
   }
   .markdown-table td {
-    @apply p-2 border border-gray-200;
+    @apply p-2 border border-slate-200 dark:border-slate-700;
   }
   .markdown-table tbody tr:nth-child(odd) {
-    @apply bg-gray-50;
+    @apply bg-slate-50 dark:bg-slate-900/50;
   }
 }

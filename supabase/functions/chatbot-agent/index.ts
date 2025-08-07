@@ -212,12 +212,12 @@ serve(async (req) => {
 
 **INTENTS:**
 - \`SPECIFIC_FLIGHT_LOOKUP\`: Asks for details about a single, specific flight (e.g., "status of BA2490?", "what is the gate for my flight?").
-- \`ANALYTICAL_QUERY\`: Requires counting, aggregating, or analyzing multiple flights (e.g., "how many flights are delayed?", "which airline has the most flights?").
+- \`ANALYTICAL_QUERY\`: Requires counting, aggregating, or analyzing multiple flights (e.g., "how many flights are delayed?", "which airline has the most flights?", "list all flights to JFK").
 - \`ANALYTICAL_CONTINUATION\`: The user is responding to the assistant's previous analytical summary. This is triggered by simple affirmations.
 
 **CRITICAL RULES FOR CLASSIFICATION:**
-1.  **Default to Lookup:** If the user provides a flight number, the intent is almost always \`SPECIFIC_FLIGHT_LOOKUP\`.
-2.  **Identify Analytics:** If the user asks "how many", "which flights", "what is the most", etc., the intent is \`ANALYTICAL_QUERY\`.
+1.  **Default to Lookup:** If the user provides a specific flight number in their LATEST message, the intent is almost always \`SPECIFIC_FLIGHT_LOOKUP\`.
+2.  **Identify Analytics:** If the user's LATEST message asks "how many", "which flights", "what is the most", "list all", or uses other aggregate terms, the intent is \`ANALYTICAL_QUERY\`, even if the conversation history contains tables of specific flights.
 3.  **!!! MOST IMPORTANT RULE - CONTINUATION !!!**
     If the assistant's LAST message was an analytical summary that ended with an offer for more details (e.g., "...A full list is available if you'd like to see it."), AND the user's LATEST message is a simple affirmation like "Yes", "Sure", "Show me", "Ok", "Please do", then you MUST classify the intent as \`ANALYTICAL_CONTINUATION\`. This is NOT a new query. It is a direct continuation of the previous turn.
 
