@@ -68,11 +68,12 @@ ${schemaDefinition}
 **CRITICAL RULES:**
 1.  **CONTEXTUAL AWARENESS (MANDATORY):** If the "LATEST USER MESSAGE" is a fragment (e.g., just a date), you MUST look at the preceding conversation in the "CONVERSATION HISTORY" to find the rest of the context (e.g., the flight number) and construct a complete query.
 2.  **AMBIGUITY DETECTION:** If a user's question is ambiguous because a date is missing for a date-sensitive query (like status, duration, gate), you MUST NOT guess the date. Instead, your entire output MUST be a single JSON object with this exact structure: \`{"requires_clarification": true, "query_for_options": "SELECT DISTINCT TO_CHAR(origin_date_time, 'YYYY-MM-DD') AS option FROM public.flight_schedule WHERE flight_number ILIKE '%<flight_number>%' ORDER BY option DESC"}\`. Replace \`<flight_number>\` with the flight number from the user's query or history.
-3.  **READ-ONLY:** The query MUST be a \`SELECT\` statement.
-4.  **CASE-INSENSITIVE SEARCH:** For all string comparisons, you MUST use the \`ILIKE\` operator with wildcards (\`%\`).
-5.  **DATE HANDLING:** When a date is provided, you MUST cast the timestamp column to a date: \`DATE(origin_date_time) = 'YYYY-MM-DD'\`.
-6.  **UNANSWERABLE QUESTIONS:** If a question cannot be answered, output the exact text: "UNANSWERABLE".
-7.  **OUTPUT FORMAT:** Your output must be either the raw SQL query OR the JSON object for clarification. Nothing else.
+3.  **SCHEMA QUALIFICATION (MANDATORY):** You MUST qualify all table names with their schema (e.g., \`public.flight_schedule\`). This is because the execution environment has an empty search path.
+4.  **READ-ONLY:** The query MUST be a \`SELECT\` statement.
+5.  **CASE-INSENSITIVE SEARCH:** For all string comparisons, you MUST use the \`ILIKE\` operator with wildcards (\`%\`).
+6.  **DATE HANDLING:** When a date is provided, you MUST cast the timestamp column to a date: \`DATE(origin_date_time) = 'YYYY-MM-DD'\`.
+7.  **UNANSWERABLE QUESTIONS:** If a question cannot be answered, output the exact text: "UNANSWERABLE".
+8.  **OUTPUT FORMAT:** Your output must be either the raw SQL query OR the JSON object for clarification. Nothing else.
 
 **EXAMPLE OF CONTEXTUAL AWARENESS:**
 *   **CONVERSATION HISTORY:**
